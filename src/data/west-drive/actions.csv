@@ -1,0 +1,4 @@
+num,action,owner,due,status
+1,Complete PL24 tool training with Kai Fischer,Marcus (BMW),25 Mar 2026,Open
+2,Implement discount approval threshold — no discount above 3% without principal sign-off,Oliver Weber (Dealer),22 Mar 2026,Overdue
+3,Update AOS basket — add 8 missing part families,Kai Fischer (Dealer),18 Mar 2026,Open

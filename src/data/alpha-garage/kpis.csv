@@ -1,0 +1,9 @@
+metric,actual,target,color,note,
+Sales vs Target,62%,100%,#EF4444,Gap €18K,400/month
+PL24 — PartsLink24 Adoption,44%,85%,#EF4444,Region avg 81%,
+AOS — Aftersales Online System Adoption,71%,85%,#F59E0B,Basket incomplete,
+DB Margin — Dealer Contribution Margin,18.20%,22%,#F59E0B,Below threshold,
+Bonus Achievement,68%,80%,#EF4444,Below target,
+Part Family Coverage,18-Nov,18/18,#EF4444,7 families missing,
+IAM Revenue,€84200,€110000,#EF4444,Gap €25K,800/month
+Peer Rank,#14/18,Top 10,#EF4444,Bottom quartile,

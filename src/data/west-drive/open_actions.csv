@@ -1,0 +1,4 @@
+label,status,statusColor,statusBg
+Complete PL24 tool training with Kai Fischer,Open,#F59E0B,rgba(245 158 11 0.1)
+Implement discount approval threshold,Overdue 4d,#EF4444,rgba(239 68 68 0.1)
+Update AOS basket — add 8 missing part families,Due Today,#F59E0B,rgba(245 158 11 0.1)

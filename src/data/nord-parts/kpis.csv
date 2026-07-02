@@ -1,0 +1,9 @@
+metric,actual,target,color,note,
+Sales vs Target,95%,100%,#22C55E,5pts from full target,
+PL24 — PartsLink24 Adoption,88%,85%,#22C55E,Above target,
+AOS — Aftersales Online System Adoption,92%,85%,#22C55E,Above target,
+DB Margin — Dealer Contribution Margin,24.00%,22%,#22C55E,Above threshold,
+Bonus Achievement,92%,80%,#22C55E,Above target,
+Part Family Coverage,17/18,18/18,#F59E0B,1 family missing,
+IAM Revenue,€106200,€110000,#F59E0B,Gap €3K,800/month
+Peer Rank,#2/18,Top 5,#22C55E,Top performer,
