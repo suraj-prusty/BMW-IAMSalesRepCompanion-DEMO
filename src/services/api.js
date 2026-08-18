@@ -32,7 +32,7 @@ async function request(endpoint, options = {}) {
 
   if (!response.ok) {
     const errData = await response.json().catch(() => ({}));
-    throw new Error(errData.error || `Request failed with status ${response.status}`);
+    throw new Error(errData.detail || errData.error || `Request failed with status ${response.status}`);
   }
 
   return response.json();

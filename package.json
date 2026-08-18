@@ -8,10 +8,11 @@
   },
   "scripts": {
     "dev": "vite",
-    "dev:server": "node server.js",
+    "dev:backend": "cd backend && python -m uvicorn main:app --reload --port 8000",
     "build": "vite build",
     "preview": "vite preview",
-    "start": "node server.js"
+    "start": "cd backend && python -m uvicorn main:app --host 0.0.0.0 --port 8000",
+    "setup:backend": "cd backend && pip install -r requirements.txt"
   },
   "dependencies": {
     "cors": "^2.8.6",

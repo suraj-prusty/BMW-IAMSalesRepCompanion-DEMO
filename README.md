@@ -11,7 +11,7 @@ A proof-of-concept field intelligence application built for BMW's **Global IAM (
 | Frontend | React 18 + Vite + Tailwind CSS |
 | Routing | React Router v6 |
 | Icons | Lucide React |
-| Backend | Express.js with REST API endpoints |
+| Backend | **FastAPI** (Python 3.11+) with async endpoints |
 | AI/LLM | Azure OpenAI (GPT-4o), **server-side proxy only** |
 | Data | Static CSV → `dataService.js` abstraction layer (DB-ready) |
 | Auth | Backend `/api/auth/login` endpoint with session token |
@@ -26,13 +26,30 @@ Intelligent_IAM_Copilot/
 ├── vite.config.js              # Vite bundler + API proxy config
 ├── tailwind.config.js          # Tailwind config
 ├── postcss.config.js           # PostCSS config
-├── server.js                   # Express API backend + static file server
 ├── .env                        # Server-side secrets (NEVER committed)
 ├── .env.example                # Template for new developers
 ├── .gitignore                  # Excludes .env, node_modules, dist/
 ├── BMW_logo.png                # BMW branding asset
 ├── BMW.png                     # BMW branding asset
 ├── SETUP.bat                   # Windows setup script
+│
+├── backend/                    # 🆕 Python FastAPI backend
+│   ├── main.py                 # FastAPI app entry point + static serving
+│   ├── requirements.txt        # Python dependencies
+│   └── app/
+│       ├── config.py           # Pydantic settings (.env → typed config)
+│       ├── api/
+│       │   ├── router.py       # Aggregated /api router
+│       │   ├── auth.py         # POST /api/auth/login
+│       │   ├── ai.py           # POST /api/ai/chat, POST /api/ai/generate
+│       │   └── health.py       # GET /api/health
+│       ├── services/
+│       │   └── azure_openai.py # Async Azure OpenAI client (httpx)
+│       ├── models/
+│       │   ├── auth.py         # LoginRequest/LoginResponse Pydantic models
+│       │   └── ai.py           # ChatRequest/GenerateRequest Pydantic models
+│       └── data/
+│           └── rag_knowledge.py# RAG knowledge base (server-side, ~300 lines)
 │
 ├── RAG_Docs/
 │   ├── BWIR_Tenderdocument.pdf          # BMW tender document (53 pages, 44 work packages)
@@ -96,13 +113,13 @@ Intelligent_IAM_Copilot/
 
 ### Security Model
 ```
-Browser (React SPA)  ──→  Express API (/api/*)  ──→  Azure OpenAI
+Browser (React SPA)  ──→  FastAPI (/api/*)  ──→  Azure OpenAI
      ↑                         ↑
   0 secrets              .env (API key)
   in bundle              server-side only
 ```
 
-All AI calls go through the Express backend. The Azure OpenAI API key lives in `.env` and is **never exposed to the browser**. The frontend uses `src/services/api.js` as a centralized HTTP client.
+All AI calls go through the FastAPI backend. The Azure OpenAI API key lives in `.env` and is **never exposed to the browser**. The frontend uses `src/services/api.js` as a centralized HTTP client.
 
 ### Data Abstraction Layer
 `src/data/dataService.js` is the single entry point for all data access. Currently it reads from CSV files. To migrate to a database, **only this file** needs to change — no other component touches data directly.
@@ -184,22 +201,30 @@ Each dealer folder contains the same 8 CSV files with dealer-specific data. The 
 
 ## Getting Started
 
+### Prerequisites
+- **Node.js** ≥ 18 (for frontend)
+- **Python** ≥ 3.11 (for backend)
+- Azure OpenAI resource (GPT-4o deployment)
+
 ```bash
-# 1. Install dependencies
+# 1. Install frontend dependencies
 npm install
 
+# 2. Install backend Python dependencies
+npm run setup:backend
+# Or directly: cd backend && pip install -r requirements.txt
 
-# 2. Set up environment (copy the template)
+# 3. Set up environment
 copy .env.example .env
 # Edit .env with your Azure OpenAI credentials
 
-# 3. Development — two terminals:
-#    Terminal 1: Start backend API (port 8080)
-npm run dev:server
-#    Terminal 2: Start Vite dev server (port 5173, proxies /api → 8080)
+# 4. Development — two terminals:
+#    Terminal 1: Start FastAPI backend (port 8000)
+npm run dev:backend
+#    Terminal 2: Start Vite dev server (port 5173, proxies /api → 8000)
 npm run dev
 
-# 4. Production build + serve (single terminal, port 8080)
+# 5. Production build + serve (single terminal, port 8000)
 npm run build
 npm start
 
@@ -207,3 +232,8 @@ npm start
 SETUP.bat
 ```
 
+## Demo Credentials
+
+Configured in `.env`:
+- **Email**: `demo.agenticai@corporate.com`
+- **Password**: `AgenticAI@2026`
