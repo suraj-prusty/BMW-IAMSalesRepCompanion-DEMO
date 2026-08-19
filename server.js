@@ -23,6 +23,8 @@ const AZURE_CONFIG = {
 // ── Demo credentials (POC only) ────────────────────────────────────────────
 const DEMO_EMAIL = process.env.DEMO_EMAIL || "demo.agenticai@corporate.com";
 const DEMO_PASSWORD = process.env.DEMO_PASSWORD || "AgenticAI@2026";
+const MANAGER_EMAIL = process.env.MANAGER_EMAIL || "manager.demo@corporate.com";
+const MANAGER_PASSWORD = process.env.MANAGER_PASSWORD || "Manager@2026";
 
 // ── Helper: call Azure OpenAI ──────────────────────────────────────────────
 async function callAzureOpenAI({ messages, maxTokens = 500, temperature = 0.7 }) {
@@ -64,11 +66,25 @@ app.post("/api/auth/login", (req, res) => {
   if (email === DEMO_EMAIL && password === DEMO_PASSWORD) {
     return res.json({
       success: true,
-      token: "demo-token-poc", // Replace with real JWT in production
+      token: "demo-token-poc",
       user: {
         name: "Marcus Schmidt",
         role: "C1 Europe Sales Executive",
         territory: "C1 Europe",
+        isManager: false,
+      },
+    });
+  }
+
+  if (email === MANAGER_EMAIL && password === MANAGER_PASSWORD) {
+    return res.json({
+      success: true,
+      token: "manager-token-poc",
+      user: {
+        name: "Anna Weber",
+        role: "Regional Sales Manager",
+        territory: "C1 Europe",
+        isManager: true,
       },
     });
   }

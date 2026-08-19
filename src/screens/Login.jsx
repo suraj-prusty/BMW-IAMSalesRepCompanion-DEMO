@@ -21,7 +21,7 @@ export default function Login() {
     try {
       const result = await api.login(email, password);
       if (result.success) {
-        navigate('/dashboard');
+        navigate(result.user?.isManager ? '/team' : '/dashboard');
       } else {
         setError(result.error || 'Invalid Username & Password');
       }

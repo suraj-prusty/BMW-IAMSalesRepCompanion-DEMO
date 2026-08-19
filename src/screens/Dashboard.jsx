@@ -6,143 +6,172 @@ import {
   AlertTriangle, Zap, ClipboardList, TrendingDown, Users,
   Activity, CheckSquare, Target, BarChart2,
 } from 'lucide-react';
-import { plannedDealers, otherDealers, kpiColor } from '../data/dealers';
+import { dealers, kpiColor } from '../data/dealers';
 import { dataService } from '../data/dataService';
+import { api } from '../services/api';
 
-// ── KPI Strip ──────────────────────────────────────────────
-const kpis = [
-  { label: 'My Dealers', value: '18', sub: '4 need attention', subColor: '#F59E0B', icon: <Users size={24} color="#A100FF" /> },
-  { label: 'Open Actions', value: '11', sub: '3 overdue', subColor: '#EF4444', icon: <CheckSquare size={24} color="#A100FF" /> },
-  { label: 'Sales vs Target', value: '78%', sub: '-4% vs last month', subColor: '#F59E0B', icon: <Target size={24} color="#A100FF" /> },
-  { label: 'PL24 Adoption', value: '72%', sub: 'Target 80%', subColor: '#F59E0B', icon: <BarChart2 size={24} color="#A100FF" /> },
-  { label: 'AOS Adoption', value: '65%', sub: 'Target 75%', subColor: '#F59E0B', icon: <Activity size={24} color="#A100FF" /> },
-];
+// ── KPI Strip — computed inside Dashboard from real data ───
 
 // ── Dealer Card ────────────────────────────────────────────
-function DealerCard({ dealer, onVisit, isPlanned }) {
+function DealerCard({ dealer, isPlanned, onPostpone, onPlanToday, isDraggable, canPlan, isManager }) {
   const navigate = useNavigate();
   const handleClick = () => navigate(`/dealer/${dealer.id}`);
+
+  const fmt = (v, decimals = 1) =>
+    v == null ? '—' : `${v > 0 ? '+' : ''}${v.toFixed(decimals)}%`;
+
+  const kpis = [
+    {
+      label: 'Rev vs Target',
+      value: fmt(dealer.revenueVsTarget),
+      color: dealer.revenueVsTarget == null ? '#606060'
+           : dealer.revenueVsTarget >= 0    ? '#22C55E'
+           : dealer.revenueVsTarget >= -20  ? '#F59E0B' : '#EF4444',
+    },
+    {
+      label: 'ABC',
+      value: dealer.abcSegment || '—',
+      color: dealer.abcSegment === 'A' ? '#22C55E'
+           : dealer.abcSegment === 'B' ? '#F59E0B' : '#EF4444',
+    },
+    {
+      label: 'Rev YoY',
+      value: fmt(dealer.yoyGrowth),
+      color: dealer.yoyGrowth == null  ? '#606060'
+           : dealer.yoyGrowth >= 0     ? '#22C55E'
+           : dealer.yoyGrowth >= -10   ? '#F59E0B' : '#EF4444',
+    },
+    {
+      label: 'Parts YoY',
+      value: dealer.partsYoY == null ? '—' : fmt(dealer.partsYoY),
+      color: dealer.partsYoY == null  ? '#606060'
+           : dealer.partsYoY >= 0     ? '#22C55E' : '#EF4444',
+    },
+  ];
 
   return (
     <div
       className="card"
+      draggable={isDraggable && canPlan && !isManager}
+      onDragStart={isDraggable && canPlan && !isManager ? (e) => e.dataTransfer.setData('text/plain', dealer.id) : undefined}
       style={{
         display: 'flex',
         alignItems: 'center',
         gap: '16px',
         marginBottom: '10px',
-        transition: 'border-color 0.2s',
+        transition: 'border-color 0.2s, opacity 0.2s',
+        cursor: isDraggable && !isManager ? (canPlan ? 'grab' : 'not-allowed') : 'default',
+        opacity: isDraggable && !canPlan && !isManager ? 0.55 : 1,
       }}
       onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#3A3A3A')}
       onMouseLeave={(e) => (e.currentTarget.style.borderColor = '#2A2A2A')}
     >
-      {/* Priority indicator */}
-      <div
-        style={{
-          width: '4px',
-          height: '52px',
-          borderRadius: '2px',
-          flexShrink: 0,
-          background:
-            dealer.priority === 'HIGH'
-              ? '#EF4444'
-              : dealer.priority === 'MED'
-              ? '#F59E0B'
-              : '#22C55E',
-        }}
-      />
+      {/* Priority bar */}
+      <div style={{
+        width: '4px', height: '52px', borderRadius: '2px', flexShrink: 0,
+        background: dealer.priority === 'HIGH' ? '#EF4444'
+                  : dealer.priority === 'MED'  ? '#F59E0B' : '#22C55E',
+      }} />
 
-      {/* Info */}
+      {/* Name + location */}
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: '15px', fontWeight: '600', color: '#FFFFFF', marginBottom: '3px' }}>
+        <div style={{ fontSize: '15px', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '3px' }}>
           {dealer.name}
         </div>
-        <div style={{ fontSize: '12px', color: '#A0A0A0' }}>
+        <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
           {dealer.location} · Last visit: {dealer.lastVisit}
         </div>
       </div>
 
       {/* KPI pills */}
       <div style={{ display: 'flex', gap: '6px', flexWrap: 'nowrap', flexShrink: 0 }}>
-        {[
-          { label: 'Sales', value: dealer.salesVsTarget, metric: 'salesVsTarget' },
-          { label: 'PL24', value: dealer.pl24Adoption, metric: 'pl24Adoption' },
-          { label: 'AOS', value: dealer.aosAdoption, metric: 'aosAdoption' },
-          { label: 'DB%', value: dealer.dbMargin, metric: 'dbMargin' },
-        ].map((kpi) => (
-          <div key={kpi.label} className="kpi-pill">
-            <span style={{ color: '#A0A0A0' }}>{kpi.label}</span>
-            <span style={{ color: kpiColor(kpi.metric, kpi.value), fontWeight: '600' }}>
-              {kpi.value}
-            </span>
+        {kpis.map((k) => (
+          <div key={k.label} className="kpi-pill">
+            <span style={{ color: 'var(--text-secondary)' }}>{k.label}</span>
+            <span style={{ color: k.color, fontWeight: '600' }}>{k.value}</span>
           </div>
         ))}
       </div>
 
-      {/* Action button */}
-      <button
-        onClick={handleClick}
-        className={isPlanned ? 'btn-primary' : 'btn-secondary'}
-        style={{ flexShrink: 0, whiteSpace: 'nowrap', padding: '8px 16px', fontSize: '13px' }}
-      >
-        {isPlanned ? 'Start Visit →' : 'View Dealership'}
-      </button>
+      {/* Buttons */}
+      <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+        {isPlanned ? (
+          <button
+            onClick={(e) => { e.stopPropagation(); onPostpone?.(dealer.id); }}
+            disabled={isManager}
+            className="btn-secondary"
+            style={{ whiteSpace: 'nowrap', padding: '8px 12px', fontSize: '12px', color: isManager ? undefined : 'var(--text-secondary)' }}
+          >
+            Postpone ↷
+          </button>
+        ) : (
+          <button
+            onClick={(e) => { e.stopPropagation(); if (canPlan) onPlanToday?.(dealer.id); }}
+            disabled={!canPlan || isManager}
+            className="btn-secondary"
+            title={canPlan ? '' : 'Postpone a visit above to free a slot'}
+            style={{
+              whiteSpace: 'nowrap', padding: '8px 12px', fontSize: '12px',
+              color: canPlan && !isManager ? '#A100FF' : 'var(--text-muted)',
+              borderColor: canPlan && !isManager ? 'rgba(161,0,255,0.4)' : 'var(--border)',
+              cursor: canPlan && !isManager ? 'pointer' : 'not-allowed',
+              opacity: canPlan && !isManager ? 1 : 0.5,
+            }}
+          >
+            + Plan Today
+          </button>
+        )}
+        <button
+          onClick={handleClick}
+          className={isPlanned ? 'btn-primary' : 'btn-secondary'}
+          style={{ whiteSpace: 'nowrap', padding: '8px 16px', fontSize: '13px' }}
+        >
+          {isPlanned ? 'Start Visit →' : 'View Dealership'}
+        </button>
+      </div>
     </div>
   );
 }
 
 // ── This Week's Plan Modal ─────────────────────────────────
-// Today's dealers — always placed on whichever weekday is "today"
-const TODAY_DEALERS = ['Alpha Garage GmbH', 'Bavaria Motors AG', 'Rhein Auto GmbH'];
+const PRIORITY_DOT = { HIGH: '#EF4444', MED: '#F59E0B', LOW: '#22C55E' };
 
-// The 4 remaining non-today days get these dealer sets (in order Mon→Fri, skipping today)
-const OTHER_DEALERS = [
-  ['Cologne Car Hub', 'Omega Garage', 'Delta Autohaus'],
-  ['Bavaria Motors AG', 'Munich Drive Center', 'Alpen Auto Group'],
-  ['Stuttgart Auto Works', 'Black Forest Garage', 'Swabian Motors'],
-  ['Nord Parts KG — Assessment', 'Hamburg Auto Parts', 'Baltic Car Supply'],
-];
-
-function buildWeekVisits() {
-  // getDay(): 0=Sun,1=Mon,2=Tue,3=Wed,4=Thu,5=Fri,6=Sat
-  // Mon-Fri map to index 0-4; on weekends default to Mon (0)
-  const dow = new Date().getDay();
-  const todayIdx = (dow >= 1 && dow <= 5) ? dow - 1 : 0;
-  let slot = 0;
-  return Array.from({ length: 5 }, (_, i) =>
-    i === todayIdx ? TODAY_DEALERS : OTHER_DEALERS[slot++]
-  );
-}
-
-function WeekPlanModal({ onClose }) {
+function WeekPlanModal({ onClose, plannedDealers, otherDealers }) {
   const todayDate = new Date().getDate();
-  const weekVisits = buildWeekVisits();
-  const days = getWeekDays().map((d, i) => ({
-    ...d,
-    visits:  weekVisits[i],
-    isToday: d.date === todayDate,
-  }));
+  const dow       = new Date().getDay();
+  const todayIdx  = (dow >= 1 && dow <= 5) ? dow - 1 : 0;
+
+  // distribute remaining dealers across the 4 non-today weekdays
+  const chunk = Math.ceil(otherDealers.length / 4) || 1;
+  let slot = 0;
+  const days = getWeekDays().map((d, i) => {
+    const isToday = d.date === todayDate;
+    if (isToday) return { ...d, isToday: true, dealers: plannedDealers };
+    const slice = otherDealers.slice(slot * chunk, (slot + 1) * chunk);
+    slot++;
+    return { ...d, isToday: false, dealers: slice };
+  });
 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div
         className="card"
-        style={{ width: '520px', maxWidth: '95vw', padding: '28px' }}
+        style={{ width: '560px', maxWidth: '95vw', padding: '28px' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
           <div>
-            <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#FFFFFF' }}>
+            <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: 'var(--text-primary)' }}>
               📅 This Week's Plan
             </h2>
-            <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#A0A0A0' }}>
+            <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: 'var(--text-secondary)' }}>
               Week {getISOWeek()} · {getWeekRangeLabel()}
             </p>
           </div>
           <button
             onClick={onClose}
-            style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#A0A0A0', padding: '4px' }}
+            style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '4px' }}
           >
             <X size={18} />
           </button>
@@ -155,38 +184,56 @@ function WeekPlanModal({ onClose }) {
               key={d.day}
               style={{
                 display: 'flex',
-                alignItems: 'center',
+                alignItems: 'flex-start',
                 gap: '16px',
                 padding: '12px 16px',
-                background: d.isToday ? 'rgba(161,0,255,0.08)' : '#1C1C1C',
-                border: `1px solid ${d.isToday ? '#A100FF' : '#2A2A2A'}`,
+                background: d.isToday ? 'rgba(161,0,255,0.08)' : 'var(--surface-raised)',
+                border: `1px solid ${d.isToday ? '#A100FF' : 'var(--border)'}`,
                 borderRadius: '8px',
               }}
             >
               {/* Day label + date */}
-              <div style={{ minWidth: '44px', textAlign: 'center' }}>
-                <div style={{ fontSize: '11px', color: d.isToday ? '#A100FF' : '#A0A0A0', fontWeight: '600', letterSpacing: '0.04em' }}>
+              <div style={{ minWidth: '44px', textAlign: 'center', paddingTop: '2px' }}>
+                <div style={{ fontSize: '11px', color: d.isToday ? '#A100FF' : 'var(--text-secondary)', fontWeight: '600', letterSpacing: '0.04em' }}>
                   {d.day}
                 </div>
-                <div style={{ fontSize: '20px', fontWeight: '700', color: d.isToday ? '#A100FF' : '#FFFFFF', lineHeight: 1.1 }}>
+                <div style={{ fontSize: '20px', fontWeight: '700', color: d.isToday ? '#A100FF' : 'var(--text-primary)', lineHeight: 1.1 }}>
                   {d.date}
                 </div>
               </div>
 
               {/* Divider */}
-              <div style={{ width: '1px', alignSelf: 'stretch', background: d.isToday ? 'rgba(161,0,255,0.3)' : '#2A2A2A' }} />
+              <div style={{ width: '1px', alignSelf: 'stretch', background: d.isToday ? 'rgba(161,0,255,0.3)' : 'var(--border)' }} />
 
               {/* Dealer list */}
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                {d.visits.map((v) => (
-                  <div key={v} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <div style={{
-                      width: '6px', height: '6px', borderRadius: '50%',
-                      background: '#A100FF', flexShrink: 0,
-                    }} />
-                    <span style={{ fontSize: '12px', color: '#FFFFFF' }}>{v}</span>
-                  </div>
-                ))}
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {d.dealers.length === 0 ? (
+                  <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontStyle: 'italic' }}>No visits scheduled</span>
+                ) : d.dealers.map((dealer) => {
+                  const dotColor = PRIORITY_DOT[dealer.priority] || '#A100FF';
+                  const revFmt   = dealer.revenueVsTarget == null ? null
+                    : `${dealer.revenueVsTarget >= 0 ? '+' : ''}${dealer.revenueVsTarget.toFixed(1)}%`;
+                  return (
+                    <div key={dealer.id} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: dotColor, flexShrink: 0, marginTop: '1px' }} />
+                      <div style={{ flex: 1 }}>
+                        <span style={{ fontSize: '12px', color: 'var(--text-primary)', fontWeight: '500' }}>{dealer.name}</span>
+                        {(dealer.abcSegment || revFmt) && (
+                          <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginLeft: '6px' }}>
+                            {[dealer.abcSegment && `ABC-${dealer.abcSegment}`, revFmt && `Rev ${revFmt}`].filter(Boolean).join(' · ')}
+                          </span>
+                        )}
+                      </div>
+                      {d.isToday && (
+                        <span style={{
+                          fontSize: '10px', fontWeight: '600', color: dotColor,
+                          background: `${dotColor}18`, border: `1px solid ${dotColor}40`,
+                          padding: '1px 7px', borderRadius: '10px', whiteSpace: 'nowrap',
+                        }}>{dealer.priority}</span>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
 
               {/* Today badge */}
@@ -194,7 +241,7 @@ function WeekPlanModal({ onClose }) {
                 <span style={{
                   fontSize: '10px', fontWeight: '700', color: '#A100FF',
                   background: 'rgba(161,0,255,0.15)', padding: '3px 10px',
-                  borderRadius: '20px', whiteSpace: 'nowrap',
+                  borderRadius: '20px', whiteSpace: 'nowrap', alignSelf: 'flex-start',
                 }}>
                   Today
                 </span>
@@ -423,7 +470,7 @@ function GermanyMap({ hoveredStop, setHoveredStop }) {
 const zoomBtnStyle = {
   background: 'rgba(20,20,20,0.92)',
   border: '1px solid #3A3A3A',
-  color: '#FFFFFF',
+  color: 'var(--text-primary)',
   borderRadius: '5px',
   width: '26px',
   height: '26px',
@@ -508,8 +555,8 @@ function PlanMyDayModal({ onClose }) {
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: '#141414',
-          border: '1px solid #2A2A2A',
+          background: 'var(--surface)',
+          border: '1px solid var(--border)',
           borderRadius: '12px',
           width: '900px',
           maxWidth: '96vw',
@@ -523,7 +570,7 @@ function PlanMyDayModal({ onClose }) {
         {/* ── Modal Header ── */}
         <div style={{
           padding: '18px 24px',
-          borderBottom: '1px solid #2A2A2A',
+          borderBottom: '1px solid var(--border)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -531,10 +578,10 @@ function PlanMyDayModal({ onClose }) {
           background: 'linear-gradient(135deg, rgba(161,0,255,0.06), transparent)',
         }}>
           <div>
-            <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
               🗺️ Plan My Day — Optimised Route
             </h2>
-            <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#A0A0A0' }}>
+            <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: 'var(--text-secondary)' }}>
               {getTodayLong()} · 3 stops · ~23 km · Est. 6h 15min total (driving + visits) · All within Cologne
             </p>
           </div>
@@ -551,7 +598,7 @@ function PlanMyDayModal({ onClose }) {
                 borderRadius: '20px', padding: '3px 10px',
               }}>{p.label}</span>
             ))}
-            <button onClick={onClose} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#A0A0A0', padding: '4px', marginLeft: '4px' }}>
+            <button onClick={onClose} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '4px', marginLeft: '4px' }}>
               <X size={18} />
             </button>
           </div>
@@ -564,7 +611,7 @@ function PlanMyDayModal({ onClose }) {
           <div style={{
             width: '360px',
             flexShrink: 0,
-            borderRight: '1px solid #2A2A2A',
+            borderRight: '1px solid var(--border)',
             overflowY: 'auto',
             padding: '20px',
           }}>
@@ -603,8 +650,8 @@ function PlanMyDayModal({ onClose }) {
                         fontSize: '13px', fontWeight: '700', color: pColor, flexShrink: 0,
                       }}>{stop.num}</div>
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: '14px', fontWeight: '700', color: '#FFFFFF', lineHeight: 1.2 }}>{stop.name}</div>
-                        <div style={{ fontSize: '11px', color: '#A0A0A0', marginTop: '2px' }}>{stop.city}</div>
+                        <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)', lineHeight: 1.2 }}>{stop.name}</div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>{stop.city}</div>
                       </div>
                       <span style={{
                         fontSize: '10px', fontWeight: '700',
@@ -617,27 +664,27 @@ function PlanMyDayModal({ onClose }) {
                     {/* Time bar */}
                     <div style={{
                       display: 'flex', alignItems: 'center', gap: '6px',
-                      background: '#0A0A0A', borderRadius: '6px', padding: '7px 10px',
+                      background: 'var(--bg)', borderRadius: '6px', padding: '7px 10px',
                       marginBottom: '10px',
                     }}>
                       <span style={{ fontSize: '12px', color: '#A100FF', fontWeight: '600' }}>⏰ {stop.arrive}</span>
                       <span style={{ fontSize: '11px', color: '#3A3A3A' }}>──────</span>
-                      <span style={{ fontSize: '11px', color: '#A0A0A0' }}>{stop.duration}</span>
+                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{stop.duration}</span>
                       <span style={{ fontSize: '11px', color: '#3A3A3A' }}>──────</span>
-                      <span style={{ fontSize: '12px', color: '#A0A0A0', fontWeight: '500' }}>🔔 {stop.depart}</span>
+                      <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: '500' }}>🔔 {stop.depart}</span>
                     </div>
 
                     {/* Focus */}
                     <div style={{ marginBottom: '10px' }}>
-                      <span style={{ fontSize: '10px', color: '#A0A0A0', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: '600' }}>Today's Focus  </span>
-                      <span style={{ fontSize: '12px', color: '#FFFFFF' }}>{stop.focus}</span>
+                      <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: '600' }}>Today's Focus  </span>
+                      <span style={{ fontSize: '12px', color: 'var(--text-primary)' }}>{stop.focus}</span>
                     </div>
 
                     {/* KPI pills */}
                     <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', marginBottom: '10px' }}>
                       {stop.kpis.map((k) => (
                         <div key={k.label} className="kpi-pill" style={{ padding: '3px 8px', fontSize: '11px' }}>
-                          <span style={{ color: '#A0A0A0' }}>{k.label} </span>
+                          <span style={{ color: 'var(--text-secondary)' }}>{k.label} </span>
                           <span style={{ color: kpiColor(k.metric, k.value), fontWeight: '700' }}>{k.value}</span>
                         </div>
                       ))}
@@ -664,7 +711,7 @@ function PlanMyDayModal({ onClose }) {
                           <div style={{ width: '2px', height: '10px', background: '#2A2A2A' }} />
                         </div>
                         <div>
-                          <div style={{ fontSize: '12px', color: '#A0A0A0', fontWeight: '500' }}>
+                          <div style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: '500' }}>
                             {stop.drive.time} · {stop.drive.dist}
                           </div>
                           {stop.drive.note && (
@@ -686,7 +733,7 @@ function PlanMyDayModal({ onClose }) {
             <div style={{ width: '2px', height: '12px', background: '#2A2A2A', marginLeft: '4px', marginTop: '4px' }} />
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '4px' }}>
               <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#A0A0A0', flexShrink: 0 }} />
-              <span style={{ fontSize: '12px', color: '#A0A0A0' }}>All stops complete · Return to base</span>
+              <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>All stops complete · Return to base</span>
             </div>
 
             {/* CTA */}
@@ -700,16 +747,16 @@ function PlanMyDayModal({ onClose }) {
             flex: 1,
             display: 'flex',
             flexDirection: 'column',
-            background: '#0A0A0A',
+            background: 'var(--bg)',
             position: 'relative',
           }}>
             {/* Map label */}
             <div style={{
               position: 'absolute', top: '14px', left: '16px', zIndex: 2,
-              fontSize: '11px', color: '#A0A0A0', fontWeight: '600',
+              fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600',
               letterSpacing: '0.07em', textTransform: 'uppercase',
               background: 'rgba(10,10,10,0.8)', padding: '4px 10px', borderRadius: '4px',
-              border: '1px solid #2A2A2A',
+              border: '1px solid var(--border)',
             }}>
               Cologne / NRW · Today's Route
             </div>
@@ -725,12 +772,12 @@ function PlanMyDayModal({ onClose }) {
                 { label: 'Visit Time', value: '5h 30min' },
               ].map((s) => (
                 <div key={s.label} style={{
-                  background: 'rgba(20,20,20,0.92)', border: '1px solid #2A2A2A',
+                  background: 'rgba(20,20,20,0.92)', border: '1px solid var(--border)',
                   borderRadius: '6px', padding: '6px 12px', textAlign: 'center',
                   backdropFilter: 'blur(4px)',
                 }}>
-                  <div style={{ fontSize: '10px', color: '#A0A0A0' }}>{s.label}</div>
-                  <div style={{ fontSize: '13px', fontWeight: '700', color: '#FFFFFF', marginTop: '2px' }}>{s.value}</div>
+                  <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>{s.label}</div>
+                  <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)', marginTop: '2px' }}>{s.value}</div>
                 </div>
               ))}
             </div>
@@ -758,19 +805,19 @@ function AISuggestionCard({ icon, title, desc, detail }) {
       onMouseLeave={(e) => (e.currentTarget.style.borderColor = '#2A2A2A')}
     >
       <div style={{ fontSize: '22px', marginBottom: '10px' }}>{icon}</div>
-      <div style={{ fontSize: '14px', fontWeight: '600', color: '#FFFFFF', marginBottom: '6px' }}>
+      <div style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '6px' }}>
         {title}
       </div>
-      <div style={{ fontSize: '13px', color: '#A0A0A0', lineHeight: 1.5 }}>{desc}</div>
+      <div style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>{desc}</div>
       {expanded && (
         <div
           style={{
             marginTop: '12px',
             padding: '12px',
-            background: '#1C1C1C',
+            background: 'var(--surface-raised)',
             borderRadius: '6px',
             fontSize: '13px',
-            color: '#A0A0A0',
+            color: 'var(--text-secondary)',
             lineHeight: 1.6,
             borderLeft: '3px solid #A100FF',
           }}
@@ -786,11 +833,525 @@ function AISuggestionCard({ icon, title, desc, detail }) {
   );
 }
 
+// ── Priority Dealer Row ────────────────────────────────────
+// target_achievement_pct = (actual−target)/target×100  → negative = under target
+// dormancy_risk = derived label (HIGH/MED/LOW), dormancy_score = raw 0–100
+function PriorityDealerRow({ dealer, rank }) {
+  const navigate   = useNavigate();
+  // 55 accounts: top 3 = red, 4-12 = amber, rest = green
+  const rankColor  = rank <= 3 ? '#EF4444' : rank <= 12 ? '#F59E0B' : '#22C55E';
+  const borderBase = rank <= 3 ? 'rgba(239,68,68,0.2)' : rank <= 12 ? 'rgba(245,158,11,0.12)' : '#1C1C1C';
+
+  // "Why visit" tags — thresholds calibrated to real data ranges
+  const reasons = [];
+  if (dealer.target_achievement_pct < -20)
+    reasons.push({ label: 'Revenue Gap',   color: '#EF4444', bg: 'rgba(239,68,68,0.1)' });
+  if (dealer.dormancy_risk === 'HIGH')
+    reasons.push({ label: 'Churn Risk',    color: '#EF4444', bg: 'rgba(239,68,68,0.1)' });
+  else if (dealer.dormancy_risk === 'MED')
+    reasons.push({ label: 'Watch',         color: '#F59E0B', bg: 'rgba(245,158,11,0.1)' });
+  if (dealer.yoy_growth_pct < -10)
+    reasons.push({ label: 'Declining YoY', color: '#F59E0B', bg: 'rgba(245,158,11,0.1)' });
+  if (dealer.cadence_overdue_ratio > 1)
+    reasons.push({ label: 'Overdue',       color: '#A100FF', bg: 'rgba(161,0,255,0.1)' });
+  if (dealer.opportunity_score > 70 && reasons.length < 2)
+    reasons.push({ label: 'High Opp',      color: '#22C55E', bg: 'rgba(34,197,94,0.1)' });
+
+  // Colour thresholds: achievement is (actual-target)/target*100 — negative means under target
+  const revColor  = dealer.target_achievement_pct >= 0 ? '#22C55E' : dealer.target_achievement_pct >= -20 ? '#F59E0B' : '#EF4444';
+  const yoyColor  = dealer.yoy_growth_pct >= 0 ? '#22C55E' : dealer.yoy_growth_pct >= -10 ? '#F59E0B' : '#EF4444';
+  const oppColor  = dealer.opportunity_score >= 70 ? '#22C55E' : dealer.opportunity_score >= 40 ? '#F59E0B' : '#A0A0A0';
+  // dayColor based on cadence overdue ratio: red ≥ 2×, amber ≥ 1.25×, green otherwise
+  const dayColor  = dealer.cadence_overdue_ratio >= 2 ? '#EF4444' : dealer.cadence_overdue_ratio >= 1.25 ? '#F59E0B' : '#22C55E';
+  const dormColor = dealer.dormancy_risk === 'HIGH' ? '#EF4444' : dealer.dormancy_risk === 'MED' ? '#F59E0B' : '#22C55E';
+
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: '44px 1fr 160px 90px 70px 90px 82px 72px 72px',
+        gap: '8px',
+        alignItems: 'center',
+        padding: '13px 16px',
+        background: 'var(--surface)',
+        border: `1px solid ${borderBase}`,
+        borderLeft: `3px solid ${rankColor}`,
+        borderRadius: '8px',
+        marginBottom: '8px',
+        cursor: 'pointer',
+        transition: 'background 0.15s',
+      }}
+      onClick={() => navigate(`/dealer/${dealer.account_id}`)}
+      onMouseEnter={(e) => { e.currentTarget.style.background = '#1A1A1A'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = '#141414'; }}
+    >
+      {/* Rank badge */}
+      <div style={{ display: 'flex', justifyContent: 'center' }}>
+        <div style={{
+          width: '30px', height: '30px', borderRadius: '50%',
+          background: `${rankColor}18`, border: `1.5px solid ${rankColor}60`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: '12px', fontWeight: '700', color: rankColor,
+        }}>{rank}</div>
+      </div>
+
+      {/* Account info */}
+      <div>
+        <div style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '4px' }}>
+          {dealer.name}
+        </div>
+        <div style={{ display: 'flex', gap: '5px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{
+            fontSize: '10px', fontWeight: '700', color: '#A100FF',
+            background: 'rgba(161,0,255,0.12)', border: '1px solid rgba(161,0,255,0.25)',
+            borderRadius: '3px', padding: '1px 5px',
+          }}>ABC-{dealer.abc_segment}</span>
+          <span style={{
+            fontSize: '10px', fontWeight: '600',
+            color: dealer.account_type === 'Dealer' ? '#60A5FA' : '#34D399',
+            background: dealer.account_type === 'Dealer' ? 'rgba(96,165,250,0.1)' : 'rgba(52,211,153,0.1)',
+            border: dealer.account_type === 'Dealer' ? '1px solid rgba(96,165,250,0.25)' : '1px solid rgba(52,211,153,0.25)',
+            borderRadius: '3px', padding: '1px 5px',
+          }}>{dealer.account_type}</span>
+          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{dealer.region}</span>
+          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>· {dealer.active_clients_irs} clients</span>
+          {dealer.open_actions > 0 && (
+            <span style={{
+              fontSize: '10px', color: '#F59E0B',
+              background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)',
+              borderRadius: '3px', padding: '1px 5px',
+            }}>{dealer.open_actions} action{dealer.open_actions !== 1 ? 's' : ''}</span>
+          )}
+        </div>
+      </div>
+
+      {/* Why visit tags */}
+      <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+        {reasons.slice(0, 2).map((r) => (
+          <span key={r.label} style={{
+            fontSize: '10px', fontWeight: '600', color: r.color,
+            background: r.bg, border: `1px solid ${r.color}40`,
+            borderRadius: '3px', padding: '2px 7px', whiteSpace: 'nowrap',
+          }}>{r.label}</span>
+        ))}
+      </div>
+
+      {/* Revenue vs Target — (actual-target)/target*100; negative = under target */}
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ fontSize: '14px', fontWeight: '700', color: revColor }}>
+          {dealer.target_achievement_pct >= 0 ? '+' : ''}{dealer.target_achievement_pct}%
+        </div>
+        <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>vs target</div>
+      </div>
+
+      {/* YoY */}
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ fontSize: '14px', fontWeight: '700', color: yoyColor }}>
+          {dealer.yoy_growth_pct >= 0 ? '+' : ''}{dealer.yoy_growth_pct}%
+        </div>
+        <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>YoY</div>
+      </div>
+
+      {/* Dormancy — label + raw 0-100 score */}
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ fontSize: '12px', fontWeight: '700', color: dormColor }}>{dealer.dormancy_risk}</div>
+        <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{dealer.dormancy_score} / 100</div>
+      </div>
+
+      {/* Opportunity Score */}
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ fontSize: '14px', fontWeight: '700', color: oppColor }}>{dealer.opportunity_score}</div>
+        <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>opp score</div>
+      </div>
+
+      {/* Days since visit + cadence adherence */}
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ fontSize: '14px', fontWeight: '700', color: dayColor }}>{dealer.last_visit_days}d</div>
+        <div style={{ fontSize: '10px', color: dayColor }}>
+          {dealer.cadence_overdue_ratio >= 2
+            ? `${dealer.cadence_overdue_ratio}× overdue`
+            : dealer.cadence_overdue_ratio > 1
+            ? `${dealer.cadence_overdue_ratio}× cadence`
+            : 'on schedule'}
+        </div>
+      </div>
+
+      {/* Cadence */}
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)' }}>{dealer.visit_cadence_per_qtr}/qtr</div>
+        <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>cadence</div>
+      </div>
+    </div>
+  );
+}
+
+// ── KPI Info Tooltip ──────────────────────────────────────
+function KpiInfoTooltip({ rows, columns }) {
+  const [open, setOpen] = useState(false);
+  if (!rows || rows.length === 0) return null;
+  return (
+    <span
+      style={{ position: 'relative', display: 'inline-block', verticalAlign: 'middle' }}
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      <span style={{ cursor: 'help', fontSize: '12px', color: '#505050', marginLeft: '5px' }}>ⓘ</span>
+      {open && (
+        <div style={{
+          position: 'absolute', top: '18px', left: '0', zIndex: 9999,
+          background: 'var(--surface-raised)', border: '1px solid #3A3A3A', borderRadius: '8px',
+          padding: '10px 12px', minWidth: '310px', maxHeight: '220px', overflowY: 'auto',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.85)', fontSize: '11px', lineHeight: 1.5,
+        }}>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: columns.map((c) => c.width || '1fr').join(' '),
+            gap: '0 10px', color: '#555', fontWeight: '700',
+            textTransform: 'uppercase', letterSpacing: '0.04em',
+            paddingBottom: '5px', borderBottom: '1px solid var(--border)', marginBottom: '4px',
+          }}>
+            {columns.map((c) => <div key={c.key}>{c.label}</div>)}
+          </div>
+          {rows.map((row, i) => (
+            <div key={i} style={{
+              display: 'grid',
+              gridTemplateColumns: columns.map((c) => c.width || '1fr').join(' '),
+              gap: '0 10px', padding: '3px 0',
+              borderBottom: i < rows.length - 1 ? '1px solid #222' : 'none',
+            }}>
+              {columns.map((c) => (
+                <div key={c.key} style={{
+                  color: c.color ? c.color(row) : '#B0B0B0',
+                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                }}>
+                  {c.render ? c.render(row) : row[c.key]}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </span>
+  );
+}
+
+// ── Prioritization View ────────────────────────────────────
+function PrioritizationView({ accountFilter, showAll, setShowAll }) {
+  const allDealers = dataService.getPrioritizedDealers();
+
+  // Filter by account type, then slice for pagination
+  const filtered  = accountFilter === 'all' ? allDealers : allDealers.filter((d) => d.account_type === accountFilter);
+  const displayed = showAll ? filtered : filtered.slice(0, 15);
+
+  // Territory-level KPIs — only under-target accounts contribute to the gap
+  const underTarget  = allDealers.filter((d) => d.revenue_actual < d.revenue_target);
+  const totalGap     = underTarget.reduce((s, d) => s + (d.revenue_target - d.revenue_actual), 0);
+  const riskCount    = allDealers.filter((d) => d.dormancy_risk !== 'LOW').length;
+  const avgOpp       = Math.round(allDealers.reduce((s, d) => s + d.opportunity_score, 0) / allDealers.length);
+  const overdueCount = allDealers.filter((d) => d.cadence_overdue_ratio > 1).length;
+
+  // Currency formatter: ≥1M → €X.XM, else €XXXK
+  const fmt = (n) => n >= 1_000_000 ? `€${(n / 1_000_000).toFixed(1)}M` : `€${Math.round(n / 1000)}K`;
+
+  const abcGroups = { A: [], B: [], C: [] };
+  allDealers.forEach((d) => { if (abcGroups[d.abc_segment]) abcGroups[d.abc_segment].push(d); });
+  const abcRevenue = (seg) => abcGroups[seg].reduce((s, d) => s + d.revenue_actual, 0);
+
+  const abcMeta = {
+    A: { color: '#22C55E', desc: 'Top revenue — protect & grow' },
+    B: { color: '#F59E0B', desc: 'Mid-tier — develop & move up' },
+    C: { color: '#EF4444', desc: 'Low contribution — qualify or churn' },
+  };
+
+  // ── Campaign adoption aggregation (dealer-campaigns.csv) ──
+  const allCampaigns = dataService.getCampaigns();
+  const activeCampsByAccount = {};
+  allCampaigns
+    .filter((c) => c.campaign_status === 'Active')
+    .forEach((c) => {
+      if (!activeCampsByAccount[c.account_id]) activeCampsByAccount[c.account_id] = [];
+      activeCampsByAccount[c.account_id].push(c);
+    });
+  const accountsWithActiveCamps = Object.entries(activeCampsByAccount).map(([id, camps]) => {
+    const kpiRow = allDealers.find((d) => d.account_id === id);
+    return {
+      account_id:   id,
+      account_type: camps[0].account_type,
+      region:       kpiRow?.region || '—',
+      campaignCount: camps.length,
+      avgAdoption:  Math.round(camps.reduce((s, c) => s + parseFloat(c.campaign_adoption_pct), 0) / camps.length),
+      avgRoi:       Math.round(camps.reduce((s, c) => s + parseFloat(c.roi_multiplier), 0) / camps.length * 10) / 10,
+    };
+  });
+  const lowAdoptionAccts = accountsWithActiveCamps
+    .filter((a) => a.avgAdoption < 30)
+    .sort((a, b) => a.avgAdoption - b.avgAdoption);
+
+  // ── Tooltip column definitions ─────────────────────────────
+  const revenueGapRows = [...underTarget]
+    .sort((a, b) => (b.revenue_target - b.revenue_actual) - (a.revenue_target - a.revenue_actual));
+  const dormancyRows   = allDealers
+    .filter((d) => d.dormancy_risk !== 'LOW')
+    .sort((a, b) => b.dormancy_score - a.dormancy_score);
+  const overdueRows    = allDealers
+    .filter((d) => d.cadence_overdue_ratio > 1)
+    .sort((a, b) => b.cadence_overdue_ratio - a.cadence_overdue_ratio);
+  const topOppRows     = [...allDealers]
+    .sort((a, b) => b.opportunity_score - a.opportunity_score)
+    .slice(0, 12);
+
+  const summaryKpis = [
+    {
+      label: 'Revenue Gap (Under-Target)', value: fmt(totalGap),
+      sub: `${underTarget.length} of ${allDealers.length} accounts below target`, subColor: '#EF4444',
+      icon: <TrendingDown size={22} color="#A100FF" />,
+      tooltipRows: revenueGapRows,
+      tooltipColumns: [
+        { key: 'account_id',   label: 'Account', width: '65px' },
+        { key: 'region',       label: 'Region',  width: '55px' },
+        { key: 'account_type', label: 'Type',    width: '48px' },
+        { key: '_gap', label: 'Gap', width: '68px',
+          color: () => '#EF4444',
+          render: (r) => fmt(r.revenue_target - r.revenue_actual) },
+      ],
+    },
+    {
+      label: 'Churn / Dormancy Risk', value: `${riskCount} Accounts`,
+      sub: `${allDealers.filter((d) => d.dormancy_risk === 'HIGH').length} HIGH · ${allDealers.filter((d) => d.dormancy_risk === 'MED').length} MED`,
+      subColor: '#EF4444', icon: <AlertTriangle size={22} color="#A100FF" />,
+      tooltipRows: dormancyRows,
+      tooltipColumns: [
+        { key: 'account_id',    label: 'Account', width: '65px' },
+        { key: 'region',        label: 'Region',  width: '55px' },
+        { key: 'dormancy_risk', label: 'Risk',    width: '42px',
+          color: (r) => r.dormancy_risk === 'HIGH' ? '#EF4444' : '#F59E0B' },
+        { key: 'dormancy_score', label: 'Score',  width: '48px',
+          color: (r) => r.dormancy_risk === 'HIGH' ? '#EF4444' : '#F59E0B' },
+      ],
+    },
+    {
+      label: 'Avg Opportunity Score', value: `${avgOpp} / 100`,
+      sub: `Top 12 accounts shown`, subColor: '#F59E0B',
+      icon: <Zap size={22} color="#A100FF" />,
+      tooltipRows: topOppRows,
+      tooltipColumns: [
+        { key: 'account_id',      label: 'Account', width: '65px' },
+        { key: 'region',          label: 'Region',  width: '55px' },
+        { key: 'abc_segment',     label: 'ABC',     width: '35px' },
+        { key: 'opportunity_score', label: 'Score', width: '48px',
+          color: (r) => r.opportunity_score >= 70 ? '#22C55E' : '#F59E0B' },
+      ],
+    },
+    {
+      label: 'Overdue Visits', value: `${overdueCount} Accounts`,
+      sub: 'Behind expected visit cadence', subColor: '#F59E0B',
+      icon: <ClipboardList size={22} color="#A100FF" />,
+      tooltipRows: overdueRows,
+      tooltipColumns: [
+        { key: 'account_id',           label: 'Account',   width: '65px' },
+        { key: 'region',               label: 'Region',    width: '55px' },
+        { key: 'last_visit_days',      label: 'Days',      width: '42px',
+          color: () => '#F59E0B', render: (r) => `${r.last_visit_days}d` },
+        { key: 'cadence_overdue_ratio', label: 'Overdue',  width: '55px',
+          color: (r) => r.cadence_overdue_ratio >= 2 ? '#EF4444' : '#F59E0B',
+          render: (r) => `${r.cadence_overdue_ratio}×` },
+      ],
+    },
+    {
+      label: 'Low Campaign Adoption', value: `${lowAdoptionAccts.length} Accounts`,
+      sub: 'Active campaigns < 30% adoption', subColor: '#F59E0B',
+      icon: <Activity size={22} color="#A100FF" />,
+      tooltipRows: lowAdoptionAccts,
+      tooltipColumns: [
+        { key: 'account_id',   label: 'Account',  width: '65px' },
+        { key: 'region',       label: 'Region',   width: '55px' },
+        { key: 'avgAdoption',  label: 'Adoption', width: '58px',
+          color: () => '#F59E0B', render: (r) => `${r.avgAdoption}%` },
+        { key: 'avgRoi',       label: 'Avg ROI',  width: '52px',
+          color: (r) => r.avgRoi >= 5 ? '#22C55E' : '#A0A0A0',
+          render: (r) => `${r.avgRoi}×` },
+      ],
+    },
+  ];
+
+  return (
+    <div>
+      {/* KPI source banner */}
+      <div style={{
+        background: 'rgba(161,0,255,0.05)', border: '1px solid rgba(161,0,255,0.2)',
+        borderRadius: '8px', padding: '11px 16px', marginBottom: '20px',
+        display: 'flex', alignItems: 'flex-start', gap: '20px', flexWrap: 'wrap',
+      }}>
+        <div style={{ fontSize: '11px', color: '#A100FF', fontWeight: '700', whiteSpace: 'nowrap', paddingTop: '1px' }}>
+          Intelligent Planning · Decide who to visit
+        </div>
+        <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', flex: 1 }}>
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+            <span style={{ color: 'var(--text-secondary)', fontWeight: '600' }}>dealer_ir_kpi_master (Excel 3):</span>
+            {' '}Revenue vs Target · ABC Segment · Dormancy Risk (0–100) · Opportunity Score · Visit Cadence · Active Clients · YoY Growth
+          </div>
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+            <span style={{ color: 'var(--text-secondary)', fontWeight: '600' }}>dealer_ir_parts_sales (Excel 2):</span>
+            {' '}Parts growth YoY · Category share of wallet · Cross-sell opportunity score
+          </div>
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+            <span style={{ color: 'var(--text-secondary)', fontWeight: '600' }}>dealer_ir_campaigns_incentives (Excel 1):</span>
+            {' '}Campaign adoption · ROI multiplier · Active campaign status
+          </div>
+        </div>
+      </div>
+
+      {/* Territory summary tiles */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '12px', marginBottom: '20px' }}>
+        {summaryKpis.map((k) => (
+          <div key={k.label} className="card" style={{ textAlign: 'left', overflow: 'visible' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+              <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.04em', lineHeight: 1.4, display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
+                {k.label}
+                <KpiInfoTooltip rows={k.tooltipRows} columns={k.tooltipColumns} />
+              </span>
+              {k.icon}
+            </div>
+            <div style={{ fontSize: '22px', fontWeight: '700', color: 'var(--text-primary)', lineHeight: 1 }}>{k.value}</div>
+            <div style={{ fontSize: '11px', color: k.subColor, marginTop: '6px' }}>{k.sub}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* ABC segment breakdown — counts + totals (55 accounts, names would overflow) */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '24px' }}>
+        {['A', 'B', 'C'].map((seg) => {
+          const group = abcGroups[seg];
+          const { color, desc } = abcMeta[seg];
+          const highCount = group.filter((d) => d.dormancy_risk === 'HIGH').length;
+          return (
+            <div key={seg} style={{
+              background: 'var(--surface)', border: `1px solid ${color}25`,
+              borderLeft: `3px solid ${color}`, borderRadius: '8px',
+              padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            }}>
+              <div>
+                <div style={{ fontSize: '11px', color, fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>
+                  ABC-{seg} — {desc}
+                </div>
+                <div style={{ fontSize: '20px', fontWeight: '700', color: 'var(--text-primary)', lineHeight: 1, marginBottom: '4px' }}>
+                  {group.length} accounts
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                  {fmt(abcRevenue(seg))} actual revenue
+                  {highCount > 0 && <span style={{ color: '#EF4444', marginLeft: '6px' }}>· {highCount} HIGH risk</span>}
+                </div>
+              </div>
+              <div style={{
+                width: '36px', height: '36px', borderRadius: '50%',
+                background: `${color}15`, border: `2px solid ${color}40`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '16px', fontWeight: '800', color, flexShrink: 0,
+              }}>{seg}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Priority ranking header */}
+      <div style={{ marginBottom: '12px' }}>
+        <div style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '3px' }}>
+          Account Priority Ranking
+        </div>
+        <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+          Score: Revenue Gap (35%) · Dormancy 0–100 (25%) · Opportunity (20%) · YoY Decline (10%) · Visit Overdue (10%)
+        </div>
+      </div>
+
+      {/* Column headers — match row grid */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: '44px 1fr 160px 90px 70px 90px 82px 72px 72px',
+        gap: '8px', padding: '0 16px 8px',
+        fontSize: '10px', color: 'var(--text-muted)', fontWeight: '600',
+        textTransform: 'uppercase', letterSpacing: '0.06em',
+        borderBottom: '1px solid var(--border)', marginBottom: '8px',
+      }}>
+        <div>Rank</div>
+        <div>Account</div>
+        <div>Why Visit</div>
+        <div style={{ textAlign: 'center' }}>vs Target</div>
+        <div style={{ textAlign: 'center' }}>YoY</div>
+        <div style={{ textAlign: 'center' }}>Dormancy</div>
+        <div style={{ textAlign: 'center' }}>Opp Score</div>
+        <div style={{ textAlign: 'center' }}>Last Visit</div>
+        <div style={{ textAlign: 'center' }}>Cadence</div>
+      </div>
+
+      {displayed.map((d, i) => <PriorityDealerRow key={d.account_id} dealer={d} rank={i + 1} />)}
+
+      {/* Show all / collapse toggle */}
+      {filtered.length > 15 && (
+        <button
+          onClick={() => setShowAll(!showAll)}
+          style={{
+            width: '100%', marginTop: '4px', padding: '10px',
+            background: 'transparent', border: '1px solid var(--border)',
+            borderRadius: '6px', color: '#A100FF', fontSize: '13px',
+            cursor: 'pointer', fontFamily: 'inherit', fontWeight: '600',
+          }}
+        >
+          {showAll ? `Show top 15 only ▲` : `Show all ${filtered.length} accounts ▼`}
+        </button>
+      )}
+
+      {/* Data source footnote */}
+      <div style={{
+        marginTop: '20px', padding: '10px 14px',
+        background: '#0F0F0F', border: '1px solid #1C1C1C',
+        borderRadius: '6px', fontSize: '11px', color: '#404040',
+      }}>
+        Sources: planning-kpis.csv (dealer_ir_kpi_master, Excel 3) · parts-growth.csv (dealer_ir_parts_sales, Excel 2) · dealer-campaigns.csv (Excel 1, loaded / not yet rendered here) · Scope: Slide 3 Intelligent Planning + Slide 5 Decide who to visit
+      </div>
+    </div>
+  );
+}
+
 // ── Main Dashboard ─────────────────────────────────────────
 export default function Dashboard() {
-  const [activeTab, setActiveTab] = useState('dealers');
-  const [showWeekPlan, setShowWeekPlan] = useState(false);
-  const [showPlanDay, setShowPlanDay] = useState(false);
+  const isManager = api.isManager();
+  const [activeTab,     setActiveTab]     = useState('dealers');
+  const [showWeekPlan,  setShowWeekPlan]  = useState(false);
+  const [showPlanDay,   setShowPlanDay]   = useState(false);
+  const [accountFilter, setAccountFilter] = useState('all'); // 'all' | 'Dealer' | 'IR'
+  const [showAll,       setShowAll]       = useState(false);
+  const [plannedIds,    setPlannedIds]    = useState(() => dealers.filter((d) => d.plannedToday).map((d) => d.id));
+  const [dragOver,      setDragOver]      = useState(false);
+
+  const plannedDealers = dealers.filter((d) =>  plannedIds.includes(d.id));
+  const otherDealers   = dealers.filter((d) => !plannedIds.includes(d.id));
+
+  // Recommended for Today: max 3 slots. Drag / Plan Today only enabled when a slot is free.
+  const canPlanMore    = plannedDealers.length < 3;
+  const moveToPlanned  = (id) => {
+    if (plannedDealers.length >= 3) return;
+    setPlannedIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+  };
+  const postponeDealer = (id) => setPlannedIds((prev) => prev.filter((p) => p !== id));
+
+  // ── My Dealers KPI tile — real account data from Excel ─────
+  const allAccounts    = dataService.getPrioritizedDealers();
+  const dealerAccounts = allAccounts.filter((a) => a.account_type === 'Dealer');
+  const needAttention  = dealerAccounts.filter((a) => a.dormancy_risk !== 'LOW' || a.target_achievement_pct < -20);
+
+  const territoryKpis = [
+    {
+      label: 'My Dealers',
+      value: `${dealerAccounts.length}`,
+      sub: `${needAttention.length} need attention`,
+      subColor: '#F59E0B',
+      icon: <Users size={24} color="#A100FF" />,
+    },
+    { label: 'Open Actions',    value: '11',  sub: '3 overdue',          subColor: '#EF4444', icon: <CheckSquare size={24} color="#A100FF" /> },
+    { label: 'Sales vs Target', value: '78%', sub: '-4% vs last month',  subColor: '#F59E0B', icon: <Target size={24} color="#A100FF" /> },
+    { label: 'PL24 Adoption',   value: '72%', sub: 'Target 80%',         subColor: '#F59E0B', icon: <BarChart2 size={24} color="#A100FF" /> },
+    { label: 'AOS Adoption',    value: '65%', sub: 'Target 75%',         subColor: '#F59E0B', icon: <Activity size={24} color="#A100FF" /> },
+  ];
 
   const tabs = [
     { id: 'dealers', label: 'My Dealers' },
@@ -798,9 +1359,9 @@ export default function Dashboard() {
   ];
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0A0A0A', padding: '24px' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--bg)', padding: '24px' }}>
       {/* Modals */}
-      {showWeekPlan && <WeekPlanModal onClose={() => setShowWeekPlan(false)} />}
+      {showWeekPlan && <WeekPlanModal onClose={() => setShowWeekPlan(false)} plannedDealers={plannedDealers} otherDealers={otherDealers} />}
       {showPlanDay && <PlanMyDayModal onClose={() => setShowPlanDay(false)} />}
 
       {/* Section 1 — Greeting + Actions */}
@@ -815,10 +1376,10 @@ export default function Dashboard() {
         }}
       >
         <div>
-          <h1 style={{ margin: 0, fontSize: '24px', fontWeight: '700', color: '#FFFFFF' }}>
+          <h1 style={{ margin: 0, fontSize: '24px', fontWeight: '700', color: 'var(--text-primary)' }}>
             Good Morning, Marcus 👋
           </h1>
-          <p style={{ margin: '6px 0 0 0', fontSize: '13px', color: '#A0A0A0' }}>
+          <p style={{ margin: '6px 0 0 0', fontSize: '13px', color: 'var(--text-secondary)' }}>
             {getTodayLong()} · C1 Europe · Week {getISOWeek()}
           </p>
         </div>
@@ -832,6 +1393,7 @@ export default function Dashboard() {
           </button>
           <button
             onClick={() => setShowPlanDay(true)}
+            disabled={isManager}
             className="btn-primary"
             style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', padding: '9px 16px' }}
           >
@@ -849,17 +1411,20 @@ export default function Dashboard() {
           marginBottom: '24px',
         }}
       >
-        {kpis.map((kpi) => (
+        {territoryKpis.map((kpi) => (
           <div
             key={kpi.label}
             className="card"
-            style={{ textAlign: 'left' }}
+            style={{ textAlign: 'left', overflow: 'visible' }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-              <span style={{ fontSize: '12px', color: '#A0A0A0', fontWeight: '500' }}>{kpi.label}</span>
+              <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: '500', display: 'flex', alignItems: 'center' }}>
+                {kpi.label}
+                <KpiInfoTooltip rows={kpi.tooltipRows} columns={kpi.tooltipColumns} />
+              </span>
               {kpi.icon}
             </div>
-            <div style={{ fontSize: '28px', fontWeight: '700', color: '#FFFFFF', lineHeight: 1 }}>
+            <div style={{ fontSize: '28px', fontWeight: '700', color: 'var(--text-primary)', lineHeight: 1 }}>
               {kpi.value}
             </div>
             <div style={{ fontSize: '12px', color: kpi.subColor, marginTop: '6px' }}>{kpi.sub}</div>
@@ -868,7 +1433,7 @@ export default function Dashboard() {
       </div>
 
       {/* Section 3 — Tabs */}
-      <div style={{ display: 'flex', gap: '0', borderBottom: '1px solid #2A2A2A', marginBottom: '24px' }}>
+      <div style={{ display: 'flex', gap: '0', borderBottom: '1px solid var(--border)', marginBottom: activeTab === 'prioritize' ? '0' : '24px' }}>
         {tabs.map((tab) => (
           <button
             key={tab.id}
@@ -892,63 +1457,135 @@ export default function Dashboard() {
         ))}
       </div>
 
+      {/* Dealer / IR sub-filter — visible only on Prioritize tab */}
+      {activeTab === 'prioritize' && (() => {
+        const allDealers = dataService.getPrioritizedDealers();
+        const dealerCount = allDealers.filter((d) => d.account_type === 'Dealer').length;
+        const irCount     = allDealers.filter((d) => d.account_type === 'IR').length;
+        const subFilters  = [
+          { id: 'all',    label: `All Accounts (${allDealers.length})` },
+          { id: 'Dealer', label: `Dealers (${dealerCount})` },
+          { id: 'IR',     label: `IRs (${irCount})` },
+        ];
+        return (
+          <div style={{ display: 'flex', gap: '0', borderBottom: '1px solid var(--border)', marginBottom: '24px', backgroundColor: 'var(--surface)' }}>
+            {subFilters.map((f) => (
+              <button
+                key={f.id}
+                onClick={() => { setAccountFilter(f.id); setShowAll(false); }}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  borderBottom: accountFilter === f.id ? '2px solid #A100FF' : '2px solid transparent',
+                  color: accountFilter === f.id ? '#FFFFFF' : '#A0A0A0',
+                  fontWeight: accountFilter === f.id ? '600' : '400',
+                  fontSize: '13px',
+                  padding: '10px 20px',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  marginBottom: '-1px',
+                  transition: 'color 0.2s',
+                }}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        );
+      })()}
+
       {/* Section 4 — Dealer List */}
       {activeTab === 'dealers' && (
         <div>
-          {/* Planned Today */}
-          <div style={{ marginBottom: '20px' }}>
+          {/* Planned Today — drop zone */}
+          <div
+            style={{ marginBottom: '20px' }}
+            onDragOver={(e) => { if (canPlanMore) { e.preventDefault(); setDragOver(true); } }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragOver(false);
+              const id = e.dataTransfer.getData('text/plain');
+              if (id && canPlanMore) moveToPlanned(id);
+            }}
+          >
             <div
               style={{
                 fontSize: '11px',
                 fontWeight: '600',
-                color: '#A0A0A0',
+                color: 'var(--text-secondary)',
                 letterSpacing: '0.08em',
                 textTransform: 'uppercase',
-                borderLeft: '3px solid #A100FF',
+                borderLeft: `3px solid ${dragOver ? '#A100FF' : '#A100FF'}`,
                 paddingLeft: '10px',
                 marginBottom: '12px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
               }}
             >
-              Planned for Today
+              Recommended for Today
+              {dragOver && (
+                <span style={{ fontSize: '10px', color: '#A100FF', fontWeight: '500', textTransform: 'none', letterSpacing: 0 }}>
+                  Drop to add →
+                </span>
+              )}
             </div>
-            {plannedDealers.map((d) => (
-              <DealerCard key={d.id} dealer={d} isPlanned={true} />
-            ))}
+            {plannedDealers.length === 0 ? (
+              <div style={{
+                border: '2px dashed #2A2A2A', borderRadius: '8px', padding: '24px',
+                textAlign: 'center', color: '#505050', fontSize: '13px',
+              }}>
+                Drag a dealership here to plan for today
+              </div>
+            ) : (
+              plannedDealers.map((d) => (
+                <DealerCard key={d.id} dealer={d} isPlanned={true} onPostpone={postponeDealer} isManager={isManager} />
+              ))
+            )}
           </div>
 
-          <div style={{ borderTop: '1px solid #2A2A2A', margin: '20px 0' }} />
+          <div style={{ borderTop: '1px solid var(--border)', margin: '20px 0' }} />
 
-          {/* My Dealerships */}
+          {/* My Dealerships — draggable */}
           <div>
             <div
               style={{
                 fontSize: '11px',
                 fontWeight: '600',
-                color: '#A0A0A0',
+                color: 'var(--text-secondary)',
                 letterSpacing: '0.08em',
                 textTransform: 'uppercase',
                 borderLeft: '3px solid #2A2A2A',
                 paddingLeft: '10px',
-                marginBottom: '12px',
+                marginBottom: '8px',
               }}
             >
               My Dealerships
             </div>
+            <div style={{ fontSize: '11px', color: canPlanMore ? '#A100FF' : '#505050', paddingLeft: '13px', marginBottom: '12px' }}>
+              {canPlanMore
+                ? `${3 - plannedDealers.length} slot${3 - plannedDealers.length !== 1 ? 's' : ''} available — drag a card up or click + Plan Today`
+                : 'Postpone a visit above to free a slot'}
+            </div>
             {otherDealers.map((d) => (
-              <DealerCard key={d.id} dealer={d} isPlanned={false} />
+              <DealerCard key={d.id} dealer={d} isPlanned={false} isDraggable={true} canPlan={canPlanMore} onPlanToday={moveToPlanned} isManager={isManager} />
             ))}
           </div>
         </div>
       )}
 
+      {/* Prioritize tab */}
+      {activeTab === 'prioritize' && <PrioritizationView accountFilter={accountFilter} showAll={showAll} setShowAll={setShowAll} />}
+
       {/* Placeholder tabs */}
       {activeTab === 'actions' && (
         <div
           className="card"
-          style={{ textAlign: 'center', padding: '48px', color: '#A0A0A0' }}
+          style={{ textAlign: 'center', padding: '48px', color: 'var(--text-secondary)' }}
         >
           <div style={{ fontSize: '32px', marginBottom: '12px' }}>🚧</div>
-          <div style={{ fontSize: '16px', fontWeight: '600', color: '#FFFFFF' }}>Coming soon</div>
+          <div style={{ fontSize: '16px', fontWeight: '600', color: 'var(--text-primary)' }}>Coming soon</div>
           <div style={{ fontSize: '13px', marginTop: '6px' }}>
             This section is under development. Check back soon.
           </div>
@@ -958,10 +1595,10 @@ export default function Dashboard() {
       {/* Section 5 — AI Suggestions */}
       <div style={{ marginTop: '32px' }}>
         <div style={{ marginBottom: '16px' }}>
-          <h2 style={{ margin: 0, fontSize: '16px', fontWeight: '700', color: '#FFFFFF' }}>
+          <h2 style={{ margin: 0, fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)' }}>
             AI Suggestions
           </h2>
-          <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#A0A0A0' }}>
+          <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
             Updated this morning based on territory data
           </p>
         </div>

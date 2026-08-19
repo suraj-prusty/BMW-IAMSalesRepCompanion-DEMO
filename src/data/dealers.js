@@ -2,7 +2,9 @@ import { parseCSV } from './csvLoader';
 import { daysAgoText } from '../utils/dateUtils';
 
 // ── Dealers list ──────────────────────────────────────────────────────────────
-import dealersRaw from './dealers.csv?raw';
+import dealersRaw        from './dealers.csv?raw';
+import planningKpisRaw   from './planning-kpis.csv?raw';
+import partsGrowthRaw    from './parts-growth.csv?raw';
 
 // ── alpha-garage ──────────────────────────────────────────────────────────────
 import ag_kpis        from './alpha-garage/kpis.csv?raw';
@@ -66,12 +68,41 @@ import ba_openActions from './berlin-auto/open_actions.csv?raw';
 
 // ── Dealers list ──────────────────────────────────────────────────────────────
 const dealerRows = parseCSV(dealersRaw);
+const kpiMaster  = parseCSV(planningKpisRaw);
+const partsGrowth = parseCSV(partsGrowthRaw);
 
-export const dealers = dealerRows.map((d) => ({
-  ...d,
-  plannedToday: d.plannedToday === 'true',
-  lastVisit: daysAgoText(d.lastVisitDate),   // computed live from lastVisitDate
-}));
+// Group parts by account_id for fast lookup
+const partsMap = {};
+partsGrowth.forEach((p) => {
+  if (!partsMap[p.account_id]) partsMap[p.account_id] = [];
+  partsMap[p.account_id].push(p);
+});
+
+export const dealers = dealerRows.map((d) => {
+  const kpi          = kpiMaster.find((k) => k.account_id === d.account_id) || {};
+  const accountParts = partsMap[d.account_id] || [];
+
+  // Aggregate parts YoY (multiple rows per account)
+  const totalCur  = accountParts.reduce((s, p) => s + parseFloat(p.current_year_sales  || 0), 0);
+  const totalPrev = accountParts.reduce((s, p) => s + parseFloat(p.last_year_sales || 0), 0);
+  const partsYoY  = totalPrev > 0
+    ? Math.round(((totalCur / totalPrev) - 1) * 100 * 10) / 10
+    : null;
+
+  return {
+    ...d,
+    plannedToday:     d.plannedToday === 'true',
+    lastVisit:        daysAgoText(d.lastVisitDate),
+    // KPIs from planning-kpis.csv (Excel 3)
+    revenueVsTarget:  kpi.target_achievement_pct != null ? parseFloat(kpi.target_achievement_pct) : null,
+    abcSegment:       kpi.abc_segment  || null,
+    yoyGrowth:        kpi.yoy_growth_pct  != null ? parseFloat(kpi.yoy_growth_pct)  : null,
+    dormancyScore:    kpi.dormancy_risk   != null ? parseFloat(kpi.dormancy_risk)    : null,
+    activeClientsIrs: kpi.active_clients_irs != null ? parseInt(kpi.active_clients_irs, 10) : null,
+    // Parts YoY from parts-growth.csv (Excel 2)
+    partsYoY,
+  };
+});
 
 export const plannedDealers = dealers.filter((d) => d.plannedToday);
 export const otherDealers   = dealers.filter((d) => !d.plannedToday);

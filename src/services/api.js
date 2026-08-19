@@ -75,6 +75,10 @@ export const api = {
     }
   },
 
+  isManager() {
+    return this.getUser()?.isManager === true;
+  },
+
   // ── AI: Chat (for ChatBot component) ─────────────────────────────────────
   async chat(messages, systemContext) {
     const data = await request("/ai/chat", {

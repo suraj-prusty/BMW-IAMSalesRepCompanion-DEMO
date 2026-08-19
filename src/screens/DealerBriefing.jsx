@@ -17,37 +17,138 @@ Paragraph 3: clearly outline the 1-2 priority actions Marcus needs the dealer to
 
 const SUMMARY_SYSTEM = `You are an IAM territory intelligence analyst. Generate a pre-visit dealer intelligence summary of 5-6 sentences covering: overall performance posture, critical metric gaps (always cite the actual numbers), revenue at risk, top priorities for today's visit, and a brief high-level recap of what was discussed or agreed at the last visit. Third person, no bullet points, factual and concise.`;
 
+function buildKpiLines(dealer) {
+  const fmtPct = (v) => v == null ? '—' : `${v > 0 ? '+' : ''}${v.toFixed(1)}%`;
+  return [
+    `- Revenue vs Target: ${fmtPct(dealer.revenueVsTarget)} (target: 0%)`,
+    `- ABC Segment: ${dealer.abcSegment || '—'}`,
+    `- Revenue YoY Growth: ${fmtPct(dealer.yoyGrowth)}`,
+    `- Parts Purchase YoY: ${fmtPct(dealer.partsYoY)}`,
+    `- Active IR Clients: ${dealer.activeClientsIrs ?? '—'}`,
+    `- Open Actions: ${dealer.openActionsCount ?? '—'}`,
+    `- Last Purchase Month: ${dealer.lastPurchaseMonth ?? '—'}`,
+    `- MoM Sales Trend: ${dealer.momSalesGrowth != null ? `${dealer.momSalesGrowth >= 0 ? '+' : ''}${dealer.momSalesGrowth.toFixed(1)}%` : '—'}`,
+  ].join('\n');
+}
+
 function buildPitchPrompt(dealer, data) {
   const principal      = data.contacts.find(c => c.label.toLowerCase().includes('principal'))?.value || 'the Principal';
   const partsManager   = data.contacts.find(c => c.label.toLowerCase().includes('parts manager'))?.value || 'the Parts Manager';
-  const kpiLines       = data.kpis.slice(0, 4).map(k => `- ${k.metric}: ${k.actual} (target ${k.target}) — ${k.note}`).join('\n');
   const issueLines     = data.issues.map(i => `- ${i.title}: ${i.impact}`).join('\n');
   const actionLines    = data.openActions.slice(0, 3).map(a => `- ${a.label}: ${a.status}`).join('\n');
   const visitNoteLines = data.visitNotes.map(n => `- ${n.note}`).join('\n');
   const lv             = data.lastVisit[0];
-  return `Generate an opening pitch for Marcus Schmidt visiting ${dealer.name} today.\n\nDealer: ${dealer.name}, ${dealer.location}\nPrincipal: ${principal}\nParts Manager: ${partsManager}\n\nKey KPIs:\n${kpiLines}\n\nTop issues:\n${issueLines}\n\nOpen actions to follow up:\n${actionLines}\n\nWhat was discussed / agreed at last visit:\n${visitNoteLines}\n\nLast visit date: ${lv?.date || 'recent'} — Attendees: ${lv?.attendees || ''}`;
+  return `Generate an opening pitch for Marcus Schmidt visiting ${dealer.name} today.\n\nDealer: ${dealer.name}, ${dealer.location}\nPrincipal: ${principal}\nParts Manager: ${partsManager}\n\nKey KPIs:\n${buildKpiLines(dealer)}\n\nTop issues:\n${issueLines}\n\nOpen actions to follow up:\n${actionLines}\n\nWhat was discussed / agreed at last visit:\n${visitNoteLines}\n\nLast visit date: ${lv?.date || 'recent'} — Attendees: ${lv?.attendees || ''}`;
 }
 
 function buildSummaryPrompt(dealer, data) {
-  const kpiLines       = data.kpis.map(k => `- ${k.metric}: ${k.actual} (target ${k.target}) — ${k.note}`).join('\n');
   const issueLines     = data.issues.map(i => `${i.num}. ${i.title}: ${i.impact}`).join('\n');
   const actionLines    = data.openActions.map(a => `- ${a.label}: ${a.status}`).join('\n');
   const visitNoteLines = data.visitNotes.map(n => `- ${n.note}`).join('\n');
   const lv             = data.lastVisit[0];
-  return `Generate a pre-visit intelligence summary for ${dealer.name}.\n\nDealer: ${dealer.name}, ${dealer.location}\nPriority: ${dealer.priority} | Last visit: ${lv?.date || 'recent'} (${dealer.lastVisit})\nAttendees: ${lv?.attendees || ''}\n\nKPIs:\n${kpiLines}\n\nOpen actions:\n${actionLines}\n\nTop issues:\n${issueLines}\n\nLast visit notes (high level — summarise, do not list verbatim):\n${visitNoteLines}`;
+  return `Generate a pre-visit intelligence summary for ${dealer.name}.\n\nDealer: ${dealer.name}, ${dealer.location}\nPriority: ${dealer.priority} | Last visit: ${lv?.date || 'recent'} (${dealer.lastVisit})\nAttendees: ${lv?.attendees || ''}\n\nKPIs:\n${buildKpiLines(dealer)}\n\nOpen actions:\n${actionLines}\n\nTop issues:\n${issueLines}\n\nLast visit notes (high level — summarise, do not list verbatim):\n${visitNoteLines}`;
 }
 
 export default function DealerBriefing() {
   const navigate = useNavigate();
   const { id } = useParams();
+  const isManager = api.isManager();
 
   // Resolve dealer + data from URL id
   const dealer = dataService.getDealerById(id);
   const data   = dataService.getDealerData(dealer.id);
 
-  // Derived display values
-  const kpiBarData   = data.kpis.slice(0, 4).map(k => ({ label: k.metric, value: k.actual, color: k.color }));
-  const fullKpiTable = data.kpis.map(k => ({ metric: k.metric, actual: k.actual, target: k.target, note: k.note, color: k.color }));
+  // ── KPI helpers ──────────────────────────────────────────────────────────────
+  const fmtPct = (v, dec = 1) =>
+    v == null ? '—' : `${v > 0 ? '+' : ''}${v.toFixed(dec)}%`;
+  const fmtEur = (n) =>
+    n == null ? '—' : n >= 1_000_000 ? `€${(n / 1_000_000).toFixed(1)}M` : `€${Math.round(n / 1000)}K`;
+  const pctColor = (v, warnAt = -20) =>
+    v == null ? '#606060' : v >= 0 ? '#22C55E' : v >= warnAt ? '#F59E0B' : '#EF4444';
+  const abcColor = (s) =>
+    s === 'A' ? '#22C55E' : s === 'B' ? '#F59E0B' : s ? '#EF4444' : '#606060';
+
+  // KPI bar — 4 pills shown at the top (from real Excel data via dataService)
+  const kpiBarData = [
+    { label: 'Rev vs Target', value: fmtPct(dealer.revenueVsTarget), color: pctColor(dealer.revenueVsTarget) },
+    { label: 'ABC Tier',      value: dealer.abcSegment || '—',        color: abcColor(dealer.abcSegment) },
+    { label: 'Rev YoY',       value: fmtPct(dealer.yoyGrowth),        color: pctColor(dealer.yoyGrowth, -10) },
+    { label: 'Parts YoY',     value: fmtPct(dealer.partsYoY),         color: pctColor(dealer.partsYoY, 0) },
+  ];
+
+  // Full KPI table — real KPIs first, then dealer-specific rows from CSV
+  const abcDesc = { A: 'Top revenue — protect & grow', B: 'Mid-tier — develop & move up', C: 'Low contribution — qualify or churn' };
+  const fullKpiTable = [
+    {
+      metric: 'Revenue vs Target',
+      actual: fmtPct(dealer.revenueVsTarget),
+      target: fmtEur(dealer.revenueTarget),
+      note:   dealer.revenueVsTarget < 0 ? 'Under target — gap to close' : 'Above target',
+      color:  pctColor(dealer.revenueVsTarget),
+    },
+    {
+      metric: 'ABC Segment',
+      actual: dealer.abcSegment || '—',
+      target: '—',
+      note:  '—',
+      color:  'var(--text-primary)',
+    },
+    {
+      metric: 'Revenue YoY Growth',
+      actual: fmtPct(dealer.yoyGrowth),
+      target: 'Positive (≥ 0%)',
+      note:   dealer.yoyGrowth < 0 ? 'Declining — customer churn risk' : 'Growing',
+      color:  pctColor(dealer.yoyGrowth, -10),
+    },
+    {
+      metric: 'Parts Purchase YoY',
+      actual: fmtPct(dealer.partsYoY),
+      target: 'Positive (≥ 0%)',
+      note:   'Aggregated across all part categories',
+      color:  pctColor(dealer.partsYoY, 0),
+    },
+    {
+      metric: 'Active IR Clients',
+      actual: dealer.activeClientsIrs != null ? String(dealer.activeClientsIrs) : '—',
+      target: '≥ 50 active',
+      note:   'IR accounts currently active',
+      color:  dealer.activeClientsIrs == null ? '#606060'
+            : dealer.activeClientsIrs >= 50   ? '#22C55E' : '#F59E0B',
+    },
+    {
+      metric: 'Open Actions',
+      actual: dealer.openActionsCount != null ? String(dealer.openActionsCount) : '—',
+      target: '—',
+      note:   '—',
+      color:  dealer.openActionsCount > 5 ? '#EF4444' : dealer.openActionsCount > 2 ? '#F59E0B' : '#22C55E',
+    },
+    {
+      metric: 'Last Purchase Month',
+      actual: dealer.lastPurchaseMonth || '—',
+      target: 'Within last 30 days',
+      note:   dealer.lastPurchaseMonth ? 'Most recent parts order placed' : 'No purchase data',
+      color:  (() => {
+        if (!dealer.lastPurchaseMonth) return '#606060';
+        const [mon, yr] = dealer.lastPurchaseMonth.split(' ');
+        const months = { Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11 };
+        const monthsAgo = (new Date().getFullYear() - parseInt(yr, 10)) * 12
+          + new Date().getMonth() - (months[mon] ?? 0);
+        return monthsAgo <= 1 ? '#22C55E' : monthsAgo <= 3 ? '#F59E0B' : '#EF4444';
+      })(),
+    },
+    {
+      metric: 'MoM Sales Trend',
+      actual: dealer.momSalesGrowth != null ? `${dealer.momSalesGrowth >= 0 ? '+' : ''}${dealer.momSalesGrowth.toFixed(1)}%` : '—',
+      target: 'Positive (≥ 0%)',
+      note:   dealer.momSalesGrowth == null ? 'No trend data'
+            : dealer.momSalesGrowth >= 0    ? 'Positive month-on-month momentum'
+            : dealer.momSalesGrowth >= -5   ? 'Slight month-on-month decline'
+            :                                 'Significant month-on-month decline',
+      color:  dealer.momSalesGrowth == null   ? '#606060'
+            : dealer.momSalesGrowth >= 0      ? '#22C55E'
+            : dealer.momSalesGrowth >= -5     ? '#F59E0B' : '#EF4444',
+    },
+  ];
   const lv           = data.lastVisit[0] || {};
   const visitSubtitle = [
     dealer.location,
@@ -96,20 +197,20 @@ export default function DealerBriefing() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0A0A0A', padding: '20px 24px 40px' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--bg)', padding: '20px 24px 40px' }}>
       {/* Back + header row */}
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px', marginBottom: '20px', flexWrap: 'wrap' }}>
         <BackButton />
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-            <h1 style={{ margin: 0, fontSize: '24px', fontWeight: '700', color: '#FFFFFF' }}>
+            <h1 style={{ margin: 0, fontSize: '24px', fontWeight: '700', color: 'var(--text-primary)' }}>
               {dealer.name}
             </h1>
             <span className={BADGE[dealer.priority] || 'badge-med'}>
               {BADGE_LABEL[dealer.priority] || dealer.priority}
             </span>
           </div>
-          <p style={{ margin: '6px 0 0 0', fontSize: '13px', color: '#A0A0A0' }}>
+          <p style={{ margin: '6px 0 0 0', fontSize: '13px', color: 'var(--text-secondary)' }}>
             {visitSubtitle}
           </p>
         </div>
@@ -125,7 +226,7 @@ export default function DealerBriefing() {
             <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
               {kpiBarData.map((k) => (
                 <div key={k.label} className="kpi-pill" style={{ padding: '6px 14px' }}>
-                  <span style={{ color: '#A0A0A0', fontSize: '12px' }}>{k.label}: </span>
+                  <span style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>{k.label}: </span>
                   <span style={{ color: k.color, fontWeight: '700', fontSize: '13px' }}>{k.value}</span>
                 </div>
               ))}
@@ -147,12 +248,12 @@ export default function DealerBriefing() {
               {showFullKPI ? 'Hide KPIs ▲' : 'View Full KPIs ▼'}
             </button>
             {showFullKPI && (
-              <div style={{ marginTop: '14px', border: '1px solid #2A2A2A', borderRadius: '6px', overflow: 'hidden' }}>
+              <div style={{ marginTop: '14px', border: '1px solid var(--border)', borderRadius: '6px', overflow: 'hidden' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                   <thead>
-                    <tr style={{ background: '#1C1C1C' }}>
+                    <tr style={{ background: 'var(--surface-raised)' }}>
                       {['Metric', 'Actual', 'Target', 'Note'].map((h) => (
-                        <th key={h} style={{ padding: '10px 14px', textAlign: 'left', color: '#A0A0A0', fontWeight: '500', borderBottom: '1px solid #2A2A2A' }}>
+                        <th key={h} style={{ padding: '10px 14px', textAlign: 'left', color: 'var(--text-secondary)', fontWeight: '500', borderBottom: '1px solid var(--border)' }}>
                           {h}
                         </th>
                       ))}
@@ -160,11 +261,11 @@ export default function DealerBriefing() {
                   </thead>
                   <tbody>
                     {fullKpiTable.map((row, i) => (
-                      <tr key={row.metric} style={{ borderBottom: i < fullKpiTable.length - 1 ? '1px solid #2A2A2A' : 'none' }}>
-                        <td style={{ padding: '10px 14px', color: '#FFFFFF' }}>{row.metric}</td>
+                      <tr key={row.metric} style={{ borderBottom: i < fullKpiTable.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                        <td style={{ padding: '10px 14px', color: 'var(--text-primary)' }}>{row.metric}</td>
                         <td style={{ padding: '10px 14px', color: row.color, fontWeight: '600' }}>{row.actual}</td>
                         <td style={{ padding: '10px 14px', color: '#22C55E' }}>{row.target}</td>
-                        <td style={{ padding: '10px 14px', color: '#A0A0A0', fontSize: '12px' }}>{row.note}</td>
+                        <td style={{ padding: '10px 14px', color: 'var(--text-secondary)', fontSize: '12px' }}>{row.note}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -179,7 +280,7 @@ export default function DealerBriefing() {
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span className="section-label" style={{ margin: 0 }}>AI Summary</span>
                 <Sparkles size={13} color="#A100FF" />
-                {summaryCount > 0 && <span style={{ fontSize: '11px', color: '#A0A0A0', background: '#1C1C1C', border: '1px solid #2A2A2A', borderRadius: '20px', padding: '1px 8px' }}>v{summaryCount}</span>}
+                {summaryCount > 0 && <span style={{ fontSize: '11px', color: 'var(--text-secondary)', background: 'var(--surface-raised)', border: '1px solid var(--border)', borderRadius: '20px', padding: '1px 8px' }}>v{summaryCount}</span>}
               </div>
               <button
                 onClick={handleGenerateSummary}
@@ -220,7 +321,7 @@ export default function DealerBriefing() {
 
             {/* Empty state */}
             {!summary && !summaryLoading && (
-              <div style={{ minHeight: '80px', border: '1px dashed #2A2A2A', borderRadius: '6px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '6px', color: '#A0A0A0', fontSize: '13px' }}>
+              <div style={{ minHeight: '80px', border: '1px dashed #2A2A2A', borderRadius: '6px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '6px', color: 'var(--text-secondary)', fontSize: '13px' }}>
                 <Sparkles size={18} color="#2A2A2A" />
                 Click "Generate Summary" for an AI-powered dealer intelligence brief
               </div>
@@ -237,7 +338,7 @@ export default function DealerBriefing() {
 
             {/* Generated summary */}
             {summary && !summaryLoading && (
-              <p style={{ margin: 0, fontSize: '13px', color: '#A0A0A0', lineHeight: 1.75 }}>
+              <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.75 }}>
                 {summary}
               </p>
             )}
@@ -248,17 +349,17 @@ export default function DealerBriefing() {
             <div className="section-label-muted">
               Last Visit — {lv.date || dealer.lastVisitDate} · {lv.attendees || ''}
             </div>
-            <ul style={{ margin: '0 0 14px 0', padding: '0 0 0 18px', fontSize: '13px', color: '#A0A0A0', lineHeight: 1.8 }}>
+            <ul style={{ margin: '0 0 14px 0', padding: '0 0 0 18px', fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.8 }}>
               {data.visitNotes.map((n, i) => <li key={i}>{n.note}</li>)}
             </ul>
-            <div style={{ borderTop: '1px solid #2A2A2A', paddingTop: '12px' }}>
-              <div style={{ fontSize: '12px', color: '#A0A0A0', marginBottom: '8px', fontWeight: '500' }}>
+            <div style={{ borderTop: '1px solid var(--border)', paddingTop: '12px' }}>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px', fontWeight: '500' }}>
                 Open actions carried forward:
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 {data.openActions.map((item, i) => (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: '#1C1C1C', borderRadius: '6px' }}>
-                    <span style={{ fontSize: '13px', color: '#FFFFFF' }}>{item.label}</span>
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: 'var(--surface-raised)', borderRadius: '6px' }}>
+                    <span style={{ fontSize: '13px', color: 'var(--text-primary)' }}>{item.label}</span>
                     <span style={{ fontSize: '11px', fontWeight: '600', color: item.statusColor, background: item.statusBg, padding: '2px 8px', borderRadius: '4px', border: `1px solid ${item.statusColor}40`, whiteSpace: 'nowrap' }}>
                       {item.status}
                     </span>
@@ -276,8 +377,8 @@ export default function DealerBriefing() {
                 <div
                   key={issue.num}
                   style={{
-                    background: '#1C1C1C',
-                    border: '1px solid #2A2A2A',
+                    background: 'var(--surface-raised)',
+                    border: '1px solid var(--border)',
                     borderRadius: '8px',
                     padding: '14px 16px',
                   }}
@@ -302,15 +403,15 @@ export default function DealerBriefing() {
                       {issue.num}
                     </div>
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: '14px', fontWeight: '600', color: '#FFFFFF', marginBottom: '8px' }}>
+                      <div style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '8px' }}>
                         {issue.title}
                       </div>
                       <div style={{ marginBottom: '6px' }}>
-                        <span style={{ fontSize: '11px', color: '#A0A0A0', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Root Cause: </span>
-                        <span style={{ fontSize: '13px', color: '#FFFFFF' }}>{issue.rootCause}</span>
+                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Root Cause: </span>
+                        <span style={{ fontSize: '13px', color: 'var(--text-primary)' }}>{issue.rootCause}</span>
                       </div>
                       <div>
-                        <span style={{ fontSize: '11px', color: '#A0A0A0', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Est. Revenue Impact: </span>
+                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Est. Revenue Impact: </span>
                         <span style={{ fontSize: '13px', color: '#22C55E', fontWeight: '600' }}>{issue.impact}</span>
                       </div>
                     </div>
@@ -326,7 +427,7 @@ export default function DealerBriefing() {
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span className="section-label" style={{ margin: 0 }}>AI Generated Pitch</span>
                 <Sparkles size={13} color="#A100FF" />
-                {pitchCount > 0 && <span style={{ fontSize: '11px', color: '#A0A0A0', background: '#1C1C1C', border: '1px solid #2A2A2A', borderRadius: '20px', padding: '1px 8px' }}>v{pitchCount}</span>}
+                {pitchCount > 0 && <span style={{ fontSize: '11px', color: 'var(--text-secondary)', background: 'var(--surface-raised)', border: '1px solid var(--border)', borderRadius: '20px', padding: '1px 8px' }}>v{pitchCount}</span>}
               </div>
               <button
                 onClick={handleGeneratePitch}
@@ -367,7 +468,7 @@ export default function DealerBriefing() {
 
             {/* Empty state */}
             {!pitch && !pitchLoading && (
-              <div style={{ minHeight: '100px', border: '1px dashed #2A2A2A', borderRadius: '6px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px', color: '#A0A0A0', fontSize: '13px' }}>
+              <div style={{ minHeight: '100px', border: '1px dashed #2A2A2A', borderRadius: '6px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px', color: 'var(--text-secondary)', fontSize: '13px' }}>
                 <Sparkles size={20} color="#2A2A2A" />
                 Click "Generate Pitch" to create a personalised AI opening pitch
               </div>
@@ -375,7 +476,7 @@ export default function DealerBriefing() {
 
             {/* Loading shimmer */}
             {pitchLoading && (
-              <div style={{ minHeight: '100px', border: '1px solid #2A2A2A', borderRadius: '6px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div style={{ minHeight: '100px', border: '1px solid var(--border)', borderRadius: '6px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {[100, 90, 70].map((w, i) => (
                   <div key={i} style={{ height: '14px', background: 'linear-gradient(90deg, #1C1C1C 25%, #2A2A2A 50%, #1C1C1C 75%)', backgroundSize: '200% 100%', borderRadius: '4px', width: `${w}%`, animation: 'shimmer 1.4s infinite' }} />
                 ))}
@@ -422,7 +523,7 @@ export default function DealerBriefing() {
                   >
                     {row.order}
                   </div>
-                  <span style={{ fontSize: '13px', color: '#A0A0A0', lineHeight: 1.5 }}>{row.item}</span>
+                  <span style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>{row.item}</span>
                 </li>
               ))}
             </ul>
@@ -433,8 +534,8 @@ export default function DealerBriefing() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {data.contacts.map((item, i) => (
                 <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '12px', color: '#A0A0A0' }}>{item.label}</span>
-                  <span style={{ fontSize: '12px', color: '#FFFFFF', fontWeight: '500' }}>{item.value}</span>
+                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{item.label}</span>
+                  <span style={{ fontSize: '12px', color: 'var(--text-primary)', fontWeight: '500' }}>{item.value}</span>
                 </div>
               ))}
             </div>
@@ -443,6 +544,7 @@ export default function DealerBriefing() {
           {/* Start Visit CTA */}
           <button
             onClick={() => navigate(`/visit/${dealer.id}`)}
+            disabled={isManager}
             className="btn-primary"
             style={{ width: '100%', padding: '14px', fontSize: '15px', fontWeight: '600' }}
           >

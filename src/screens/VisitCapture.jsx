@@ -5,6 +5,7 @@ import BackButton from '../components/BackButton';
 import { dataService } from '../data/dataService';
 import { dealers } from '../data/dealers';
 import { getCurrentTime } from '../utils/dateUtils';
+import { api } from '../services/api';
 
 // ── Chip multi-select ───────────────────────────────────────
 function ChipSelect({ options, selected, onChange }) {
@@ -209,6 +210,7 @@ function IssueRow({ issue, isCustom = false, onUpdate, onRemove }) {
 export default function VisitCapture() {
   const navigate = useNavigate();
   const { id } = useParams();
+  const isManager = api.isManager();
   const dealer = dealers.find((d) => d.id === id) || dealers[0];
   const data = dataService.getDealerData(dealer.id);
 
@@ -289,7 +291,7 @@ export default function VisitCapture() {
       </div>
 
       {/* Two-column layout */}
-      <div style={{ display: 'grid', gridTemplateColumns: '60% 40%', gap: '20px', alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '60% 40%', gap: '20px', alignItems: 'start', ...(isManager && { pointerEvents: 'none' }) }}>
 
         {/* ── LEFT: Structured Questions ── */}
         <div className="card">
@@ -511,6 +513,7 @@ export default function VisitCapture() {
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}>
         <button
           onClick={() => navigate(`/submit/${dealer.id}`)}
+          disabled={isManager}
           className="btn-primary"
           style={{ fontSize: '15px', padding: '12px 28px', fontWeight: '600' }}
         >

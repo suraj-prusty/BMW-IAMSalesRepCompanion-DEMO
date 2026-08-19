@@ -1,7 +1,7 @@
-id,name,location,lastVisitDate,visitTime,salesVsTarget,pl24Adoption,aosAdoption,dbMargin,priority,plannedToday
-alpha-garage,Alpha Garage GmbH,"Raderthalgürtel 1A, 50968 Köln",26 Feb 2026,09:00 AM,62%,44%,71%,18.2%,HIGH,true
-bavaria-motors,Bavaria Motors AG,"Bayerische Allee 1, 50858 Köln",06 Mar 2026,11:45 AM,88%,79%,85%,22.1%,MED,true
-rhein-auto,Rhein Auto GmbH,"Robert-Perthel-Straße 1, 50739 Köln",19 Feb 2026,04:00 PM,74%,61%,68%,19.5%,MED,true
-nord-parts,Nord Parts KG,"Hamburg, Germany",15 Mar 2026,,95%,88%,92%,24.0%,LOW,false
-west-drive,West Drive GmbH,"Frankfurt, Germany",08 Mar 2026,,71%,55%,74%,17.8%,MED,false
-berlin-auto,Berlin Auto Gruppe,"Berlin, Germany",13 Mar 2026,,83%,70%,80%,21.3%,LOW,false
+id,name,location,lastVisitDate,visitTime,account_id,priority,plannedToday
+alpha-garage,Alpha Garage GmbH,"Raderthalgürtel 1A, 50968 Köln",26 Feb 2026,09:00 AM,D100,HIGH,true
+bavaria-motors,Bavaria Motors AG,"Bayerische Allee 1, 50858 Köln",06 Mar 2026,11:45 AM,D102,MED,true
+rhein-auto,Rhein Auto GmbH,"Robert-Perthel-Straße 1, 50739 Köln",19 Feb 2026,04:00 PM,D107,MED,true
+nord-parts,Nord Parts KG,"Hamburg, Germany",15 Mar 2026,,D124,LOW,false
+west-drive,West Drive GmbH,"Frankfurt, Germany",08 Mar 2026,,D105,MED,false
+berlin-auto,Berlin Auto Gruppe,"Berlin, Germany",13 Mar 2026,,D106,LOW,false

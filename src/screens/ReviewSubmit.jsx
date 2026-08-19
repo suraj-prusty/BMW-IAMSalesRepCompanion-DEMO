@@ -112,6 +112,7 @@ function SectionCard({ label, children }) {
 export default function ReviewSubmit() {
   const navigate = useNavigate();
   const { id } = useParams();
+  const isManager = api.isManager();
   const dealer = dataService.getDealerById(id);
   const data = dataService.getDealerData(dealer.id);
 
@@ -371,9 +372,10 @@ export default function ReviewSubmit() {
                 <button
                   key={d}
                   onClick={() => setSelectedDate(d)}
+                  disabled={isManager}
                   style={{
                     flex: 1, padding: '9px 4px', borderRadius: '6px', fontSize: '12px', fontWeight: '500',
-                    cursor: 'pointer', fontFamily: 'inherit',
+                    cursor: isManager ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
                     background: selectedDate === d ? 'rgba(161,0,255,0.15)' : '#1C1C1C',
                     border: `1px solid ${selectedDate === d ? '#A100FF' : '#2A2A2A'}`,
                     color: selectedDate === d ? '#A100FF' : '#A0A0A0',
@@ -384,7 +386,7 @@ export default function ReviewSubmit() {
                 </button>
               ))}
             </div>
-            <button className="btn-secondary" style={{ width: '100%', fontSize: '13px', padding: '9px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+            <button disabled={isManager} className="btn-secondary" style={{ width: '100%', fontSize: '13px', padding: '9px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', cursor: isManager ? 'not-allowed' : 'pointer' }}>
               <Calendar size={13} /> Add to Calendar
             </button>
           </div>
@@ -397,9 +399,10 @@ export default function ReviewSubmit() {
                 <button
                   key={p.label}
                   onClick={() => setPriority(p.label)}
+                  disabled={isManager}
                   style={{
                     flex: 1, padding: '9px 4px', borderRadius: '6px', fontSize: '11px', fontWeight: '600',
-                    cursor: 'pointer', fontFamily: 'inherit',
+                    cursor: isManager ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
                     background: priority === p.label ? p.bg : '#1C1C1C',
                     border: `1px solid ${priority === p.label ? p.border : '#2A2A2A'}`,
                     color: priority === p.label ? p.color : '#A0A0A0',
@@ -415,13 +418,15 @@ export default function ReviewSubmit() {
           {/* Submit CTA */}
           <button
             onClick={() => navigate('/success', { state: { dealerName: dealer.name, nextVisit: selectedDate } })}
+            disabled={isManager}
             style={{
-              width: '100%', padding: '16px', background: '#22C55E', border: 'none', borderRadius: '8px',
-              color: '#FFFFFF', fontSize: '15px', fontWeight: '700', cursor: 'pointer', fontFamily: 'inherit',
+              width: '100%', padding: '16px', background: isManager ? '#1C1C1C' : '#22C55E', border: 'none', borderRadius: '8px',
+              color: isManager ? '#505050' : '#FFFFFF', fontSize: '15px', fontWeight: '700',
+              cursor: isManager ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'background 0.2s',
             }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = '#16A34A')}
-            onMouseLeave={(e) => (e.currentTarget.style.background = '#22C55E')}
+            onMouseEnter={(e) => { if (!isManager) e.currentTarget.style.background = '#16A34A'; }}
+            onMouseLeave={(e) => { if (!isManager) e.currentTarget.style.background = '#22C55E'; }}
           >
             <CheckCircle size={18} />
             Approve + Upload to Central System
