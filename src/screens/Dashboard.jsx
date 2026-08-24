@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getTodayLong, getISOWeek, getWeekRangeLabel, getWeekDays } from '../utils/dateUtils';
 import {
@@ -6,7 +6,7 @@ import {
   AlertTriangle, Zap, ClipboardList, TrendingDown, Users,
   Activity, CheckSquare, Target, BarChart2,
 } from 'lucide-react';
-import { dealers, kpiColor } from '../data/dealers';
+import { kpiColor } from '../data/dealers';
 import { dataService } from '../data/dataService';
 import { api } from '../services/api';
 
@@ -42,10 +42,10 @@ function DealerCard({ dealer, isPlanned, onPostpone, onPlanToday, isDraggable, c
            : dealer.yoyGrowth >= -10   ? '#F59E0B' : '#EF4444',
     },
     {
-      label: 'Parts YoY',
-      value: dealer.partsYoY == null ? '—' : fmt(dealer.partsYoY),
-      color: dealer.partsYoY == null  ? '#606060'
-           : dealer.partsYoY >= 0     ? '#22C55E' : '#EF4444',
+      label: 'Cust MoM',
+      value: dealer.customerMoM == null ? '—' : fmt(dealer.customerMoM),
+      color: dealer.customerMoM == null ? '#606060'
+           : dealer.customerMoM >= 0    ? '#22C55E' : '#EF4444',
     },
   ];
 
@@ -77,6 +77,11 @@ function DealerCard({ dealer, isPlanned, onPostpone, onPlanToday, isDraggable, c
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: '15px', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '3px' }}>
           {dealer.name}
+          {dealer.dealer_code && (
+            <span style={{ fontSize: '11px', fontWeight: '400', color: 'var(--text-muted)', marginLeft: '6px' }}>
+              ({dealer.dealer_code})
+            </span>
+          )}
         </div>
         <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
           {dealer.location} · Last visit: {dealer.lastVisit}
@@ -104,7 +109,7 @@ function DealerCard({ dealer, isPlanned, onPostpone, onPlanToday, isDraggable, c
           >
             Postpone ↷
           </button>
-        ) : (
+        ) : onPlanToday ? (
           <button
             onClick={(e) => { e.stopPropagation(); if (canPlan) onPlanToday?.(dealer.id); }}
             disabled={!canPlan || isManager}
@@ -120,7 +125,7 @@ function DealerCard({ dealer, isPlanned, onPostpone, onPlanToday, isDraggable, c
           >
             + Plan Today
           </button>
-        )}
+        ) : null}
         <button
           onClick={handleClick}
           className={isPlanned ? 'btn-primary' : 'btn-secondary'}
@@ -156,7 +161,7 @@ function WeekPlanModal({ onClose, plannedDealers, otherDealers }) {
     <div className="modal-overlay" onClick={onClose}>
       <div
         className="card"
-        style={{ width: '560px', maxWidth: '95vw', padding: '28px' }}
+        style={{ width: '560px', maxWidth: '95vw', maxHeight: '85vh', overflowY: 'auto', padding: '28px' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -1039,6 +1044,23 @@ function KpiInfoTooltip({ rows, columns }) {
 function PrioritizationView({ accountFilter, showAll, setShowAll }) {
   const allDealers = dataService.getPrioritizedDealers();
 
+  const [abcApiData,    setAbcApiData]    = useState(null);
+  const [abcApiLoading, setAbcApiLoading] = useState(true);
+  const [abcApiError,   setAbcApiError]   = useState(null);
+
+  useEffect(() => {
+    api.getAbcSegmentation()
+      .then((data) => {
+        console.log('[ABC Segmentation API] response:', data);
+        setAbcApiData(data);
+      })
+      .catch((err) => {
+        console.error('[ABC Segmentation API] error:', err);
+        setAbcApiError(err.message);
+      })
+      .finally(() => setAbcApiLoading(false));
+  }, []);
+
   // Filter by account type, then slice for pagination
   const filtered  = accountFilter === 'all' ? allDealers : allDealers.filter((d) => d.account_type === accountFilter);
   const displayed = showAll ? filtered : filtered.slice(0, 15);
@@ -1053,9 +1075,23 @@ function PrioritizationView({ accountFilter, showAll, setShowAll }) {
   // Currency formatter: ≥1M → €X.XM, else €XXXK
   const fmt = (n) => n >= 1_000_000 ? `€${(n / 1_000_000).toFixed(1)}M` : `€${Math.round(n / 1000)}K`;
 
-  const abcGroups = { A: [], B: [], C: [] };
-  allDealers.forEach((d) => { if (abcGroups[d.abc_segment]) abcGroups[d.abc_segment].push(d); });
-  const abcRevenue = (seg) => abcGroups[seg].reduce((s, d) => s + d.revenue_actual, 0);
+  // Build abcGroups: prefer live API data, fall back to CSV
+  // API response shape: { processed_at, abc_segmentation: { segment_A: [...], segment_B: [...], segment_C: [...], all_dealers: [...], total_dealers: N } }
+  const abcSeg     = abcApiData?.abc_segmentation;
+  const abcFromApi = !abcApiLoading && !abcApiError && abcSeg != null;
+  const abcGroups  = abcFromApi
+    ? { A: abcSeg.segment_A || [], B: abcSeg.segment_B || [], C: abcSeg.segment_C || [] }
+    : (() => {
+        const g = { A: [], B: [], C: [] };
+        allDealers.forEach((d) => { if (g[d.abc_segment]) g[d.abc_segment].push(d); });
+        return g;
+      })();
+
+  // Revenue field: API uses ytd_sales_eur; CSV fallback uses revenue_actual
+  const abcRevenue = (seg) => abcGroups[seg].reduce((s, d) => {
+    const rev = d.ytd_sales_eur ?? d.revenue_actual ?? d.revenue ?? 0;
+    return s + (typeof rev === 'number' ? rev : parseFloat(rev) || 0);
+  }, 0);
 
   const abcMeta = {
     A: { color: '#22C55E', desc: 'Top revenue — protect & grow' },
@@ -1219,11 +1255,34 @@ function PrioritizationView({ accountFilter, showAll, setShowAll }) {
       </div>
 
       {/* ABC segment breakdown — counts + totals (55 accounts, names would overflow) */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+        <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)' }}>ABC Segment Breakdown</span>
+        {abcApiLoading && <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Loading from API…</span>}
+        {!abcApiLoading && abcFromApi && (
+          <span style={{ fontSize: '10px', color: '#22C55E', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.25)', borderRadius: '3px', padding: '1px 6px' }}>
+            Live · AWS API
+          </span>
+        )}
+        {!abcApiLoading && abcApiError && (
+          <span style={{ fontSize: '10px', color: '#F59E0B', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: '3px', padding: '1px 6px' }}>
+            Fallback · CSV ({abcApiError})
+          </span>
+        )}
+      </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '24px' }}>
         {['A', 'B', 'C'].map((seg) => {
           const group = abcGroups[seg];
           const { color, desc } = abcMeta[seg];
-          const highCount = group.filter((d) => d.dormancy_risk === 'HIGH').length;
+          // dormancy_risk only exists in CSV data; API data won't have it
+          const highCount = abcFromApi ? 0 : group.filter((d) => d.dormancy_risk === 'HIGH').length;
+          // API data: show top country by dealer count
+          const topCountry = abcFromApi
+            ? (() => {
+                const counts = {};
+                group.forEach((d) => { counts[d.country] = (counts[d.country] || 0) + 1; });
+                return Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0];
+              })()
+            : null;
           return (
             <div key={seg} style={{
               background: 'var(--surface)', border: `1px solid ${color}25`,
@@ -1238,8 +1297,9 @@ function PrioritizationView({ accountFilter, showAll, setShowAll }) {
                   {group.length} accounts
                 </div>
                 <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                  {fmt(abcRevenue(seg))} actual revenue
+                  {fmt(abcRevenue(seg))} YTD revenue
                   {highCount > 0 && <span style={{ color: '#EF4444', marginLeft: '6px' }}>· {highCount} HIGH risk</span>}
+                  {topCountry && <span style={{ marginLeft: '6px' }}>· top: {topCountry}</span>}
                 </div>
               </div>
               <div style={{
@@ -1312,45 +1372,188 @@ function PrioritizationView({ accountFilter, showAll, setShowAll }) {
   );
 }
 
+// ── Normalize raw API dealer to DealerCard shape ──────────
+// The GET /dealers KPI structure varies per dealer:
+//   - Some have abc_segmentation: { segment, ytd_sales_eur, country, quantile }
+//   - Others have abc_segmentation: { M1_Target, M2_Target, M3_Target, QTD_Target } (revenue targets)
+//   - revenue_vs_target may be absent (targets stored inside abc_segmentation instead)
+function normalizeApiDealer(raw) {
+  const kpis        = raw.kpis || {};
+  const abc         = kpis.abc_segmentation           || {};
+  const purchaseRvt = kpis.purchase_revenue_vs_target || {};
+  const saleRvt     = kpis.sale_revenue_vs_target     || {};
+  const ryoy        = kpis.revenue_yoy                || {};
+  const yoyComp     = kpis.yoy_comparison             || {};
+  const custTrend   = kpis.customer_trend             || {};
+
+  // Individual achievement %s kept for the OR filter in recommendations
+  const purchaseAchvPct = purchaseRvt.M2_AchvPct ?? null;
+  const saleAchvPct     = saleRvt.M2_AchvPct     ?? null;
+
+  // Revenue vs Target: purchase data only — shows — when purchase data is absent
+  const rvt        = purchaseRvt;
+  const targetType = 'purchase';
+
+  const abcSegment = abc.segment || null;
+  const m2Target   = rvt.M2_Target  ?? abc.M2_Target  ?? null;
+  const m2Actual   = rvt.M2_Actual  ?? abc.M2_Actual  ?? null;
+  const m2AchvPct  = rvt.M2_AchvPct ?? abc.M2_AchvPct ?? null;
+  const qtdTarget  = rvt.QTD_Target ?? abc.QTD_Target ?? null;
+
+  let revenueVsTarget = null;
+  if (m2AchvPct != null) {
+    revenueVsTarget = Math.round((m2AchvPct - 100) * 10) / 10;
+  } else if (m2Actual != null && m2Target != null && m2Target !== 0) {
+    revenueVsTarget = Math.round((m2Actual / m2Target - 1) * 100 * 10) / 10;
+  }
+
+  let yoyGrowth = null;
+  if (ryoy.cy_revenue_eur > 0 && ryoy.ly_revenue_eur > 0) {
+    yoyGrowth = Math.round((ryoy.cy_revenue_eur / ryoy.ly_revenue_eur - 1) * 100 * 10) / 10;
+  }
+
+  // Customer MoM: % change from second-to-last → last month in customer_count_apr_may_jun
+  let customerMoM = null;
+  const cStr = custTrend.customer_count_apr_may_jun;
+  if (cStr) {
+    const nums = cStr.split(',').map((v) => parseInt(v.trim(), 10)).filter((v) => !isNaN(v));
+    if (nums.length >= 2) {
+      const prev = nums[nums.length - 2];
+      const curr = nums[nums.length - 1];
+      if (prev !== 0) {
+        customerMoM = Math.round((curr - prev) / prev * 100 * 10) / 10;
+      } else if (curr > 0) {
+        customerMoM = 100;
+      }
+    }
+  }
+
+  const priority  = abcSegment === 'A' ? 'LOW' : abcSegment === 'B' ? 'MED' : 'HIGH';
+  const lastVisit = raw.run_date ? `Data: ${raw.run_date.slice(0, 10)}` : '—';
+
+  return {
+    id:              raw.dealer_code,
+    dealer_code:     raw.dealer_code,
+    name:            raw.dealer_name,
+    location:        abc.country || '—',
+    abcSegment,
+    revenueVsTarget,
+    revenueTarget:   m2Target ?? qtdTarget,
+    revenueActual:   m2Actual,
+    yoyGrowth,
+    customerMoM,
+    priority,
+    lastVisit,
+    targetType,
+    purchaseAchvPct,
+    saleAchvPct,
+    lastVisitDate:   null,
+    plannedToday:    false,
+    visitTime:       null,
+    dormancyScore:   null,
+  };
+}
+
 // ── Main Dashboard ─────────────────────────────────────────
 export default function Dashboard() {
   const isManager = api.isManager();
-  const [activeTab,     setActiveTab]     = useState('dealers');
-  const [showWeekPlan,  setShowWeekPlan]  = useState(false);
-  const [showPlanDay,   setShowPlanDay]   = useState(false);
-  const [accountFilter, setAccountFilter] = useState('all'); // 'all' | 'Dealer' | 'IR'
-  const [showAll,       setShowAll]       = useState(false);
-  const [plannedIds,    setPlannedIds]    = useState(() => dealers.filter((d) => d.plannedToday).map((d) => d.id));
-  const [dragOver,      setDragOver]      = useState(false);
+  const [activeTab,      setActiveTab]      = useState('dealers');
+  const [showWeekPlan,   setShowWeekPlan]   = useState(false);
+  const [showPlanDay,    setShowPlanDay]    = useState(false);
+  const [accountFilter,  setAccountFilter]  = useState('all'); // 'all' | 'Dealer' | 'IR'
+  const [showAll,        setShowAll]        = useState(false);
+  const [apiDealers,     setApiDealers]     = useState([]);
+  const [dealersLoading, setDealersLoading] = useState(true);
 
-  const plannedDealers = dealers.filter((d) =>  plannedIds.includes(d.id));
-  const otherDealers   = dealers.filter((d) => !plannedIds.includes(d.id));
+  // Auto-recommended: segment B dealers where M2 achievement < 60%
+  // OR logic: purchase target < 60% OR sales target < 60%
+  const recommendedDealers = apiDealers
+    .filter((d) => {
+      if (d.abcSegment !== 'B') return false;
+      const purchaseUnder =
+        (d.purchaseAchvPct != null && d.purchaseAchvPct < 60) ||
+        (d.targetType === 'purchase' && d.revenueVsTarget != null && d.revenueVsTarget < -40);
+      const salesUnder =
+        (d.saleAchvPct != null && d.saleAchvPct < 60) ||
+        (d.targetType === 'sales' && d.revenueVsTarget != null && d.revenueVsTarget < -40);
+      return purchaseUnder || salesUnder;
+    })
+    .sort((a, b) => a.revenueVsTarget - b.revenueVsTarget)
+    .slice(0, 3);
 
-  // Recommended for Today: max 3 slots. Drag / Plan Today only enabled when a slot is free.
+  useEffect(() => {
+    api.getDealers()
+      .then((data) => {
+        console.log('[GET /dealers]', data);
+        const list = Array.isArray(data) ? data : Array.isArray(data?.dealers) ? data.dealers : [];
+        setApiDealers(list.map(normalizeApiDealer));
+      })
+      .catch((err) => console.error('[GET /dealers] error:', err))
+      .finally(() => setDealersLoading(false));
+  }, []);
+
+  const [showAllDealers,  setShowAllDealers]  = useState(false);
+  const [plannedIds,      setPlannedIds]      = useState([]);
+  const [planInitialized, setPlanInitialized] = useState(false);
+  const [dragOver,        setDragOver]        = useState(false);
+
+  const DEALER_PAGE_SIZE = 50;
+  const DEMO_DEALER_CODES = new Set([21125, 11380, 35955, 33400, 40477, 6057, 30864, 9118, 28965, 33160].map(String));
+  const demoDealers = apiDealers.filter(d => DEMO_DEALER_CODES.has(String(d.dealer_code)));
+
+  // Seed "Recommended for Today" from auto-recommendations once API data arrives
+  useEffect(() => {
+    if (!planInitialized && recommendedDealers.length > 0) {
+      setPlannedIds(recommendedDealers.map(d => d.id));
+      setPlanInitialized(true);
+    }
+  }, [apiDealers.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Plan state — "Recommended for Today" capped at 3, "My Dealerships" = the rest
+  const plannedDealers = apiDealers.filter(d => plannedIds.includes(d.id));
+  const otherDealers   = demoDealers.filter(d => !plannedIds.includes(d.id));
   const canPlanMore    = plannedDealers.length < 3;
-  const moveToPlanned  = (id) => {
-    if (plannedDealers.length >= 3) return;
-    setPlannedIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
-  };
-  const postponeDealer = (id) => setPlannedIds((prev) => prev.filter((p) => p !== id));
 
-  // ── My Dealers KPI tile — real account data from Excel ─────
-  const allAccounts    = dataService.getPrioritizedDealers();
-  const dealerAccounts = allAccounts.filter((a) => a.account_type === 'Dealer');
-  const needAttention  = dealerAccounts.filter((a) => a.dormancy_risk !== 'LOW' || a.target_achievement_pct < -20);
+  const moveToPlanned = (id) => {
+    if (plannedDealers.length >= 3) return;
+    setPlannedIds(prev => prev.includes(id) ? prev : [...prev, id]);
+  };
+  const postponeDealer = (id) => setPlannedIds(prev => prev.filter(p => p !== id));
+
+  const visibleDealers = showAllDealers ? otherDealers : otherDealers.slice(0, DEALER_PAGE_SIZE);
+
+  // Derived metrics from real API data
+  const belowTarget       = apiDealers.filter(d => d.purchaseAchvPct != null && d.purchaseAchvPct < 60).length;
+  const dealersWithAchv   = apiDealers.filter(d => d.purchaseAchvPct != null);
+  const avgPurchaseAchv   = dealersWithAchv.length > 0
+    ? Math.round(dealersWithAchv.reduce((s, d) => s + d.purchaseAchvPct, 0) / dealersWithAchv.length * 10) / 10
+    : null;
+  const aboveTarget       = apiDealers.filter(d => d.purchaseAchvPct != null && d.purchaseAchvPct >= 100).length;
 
   const territoryKpis = [
     {
-      label: 'My Dealers',
-      value: `${dealerAccounts.length}`,
-      sub: `${needAttention.length} need attention`,
+      label:    'My Dealers',
+      value:    dealersLoading ? '…' : String(demoDealers.length),
+      sub:      dealersLoading ? '' : `${belowTarget} below 60% purchase target`,
       subColor: '#F59E0B',
-      icon: <Users size={24} color="#A100FF" />,
+      icon:     <Users size={24} color="#A100FF" />,
     },
-    { label: 'Open Actions',    value: '11',  sub: '3 overdue',          subColor: '#EF4444', icon: <CheckSquare size={24} color="#A100FF" /> },
-    { label: 'Sales vs Target', value: '78%', sub: '-4% vs last month',  subColor: '#F59E0B', icon: <Target size={24} color="#A100FF" /> },
-    { label: 'PL24 Adoption',   value: '72%', sub: 'Target 80%',         subColor: '#F59E0B', icon: <BarChart2 size={24} color="#A100FF" /> },
-    { label: 'AOS Adoption',    value: '65%', sub: 'Target 75%',         subColor: '#F59E0B', icon: <Activity size={24} color="#A100FF" /> },
+    {
+      label:    'Open Actions',
+      value:    dealersLoading ? '…' : String(belowTarget),
+      sub:      dealersLoading ? '' : `${recommendedDealers.length} recommended today`,
+      subColor: '#EF4444',
+      icon:     <CheckSquare size={24} color="#A100FF" />,
+    },
+    {
+      label:    'Sales vs Target',
+      value:    dealersLoading ? '…' : avgPurchaseAchv != null ? `${avgPurchaseAchv}%` : '—',
+      sub:      dealersLoading ? '' : avgPurchaseAchv != null ? `${aboveTarget} at or above target` : 'No purchase data',
+      subColor: avgPurchaseAchv != null && avgPurchaseAchv >= 100 ? '#22C55E' : '#F59E0B',
+      icon:     <Target size={24} color="#A100FF" />,
+    },
+    { label: 'PL24 Adoption', value: '72%', sub: 'Target 80%', subColor: '#F59E0B', icon: <BarChart2 size={24} color="#A100FF" /> },
+    { label: 'AOS Adoption',  value: '65%', sub: 'Target 75%', subColor: '#F59E0B', icon: <Activity size={24} color="#A100FF" /> },
   ];
 
   const tabs = [
@@ -1361,7 +1564,7 @@ export default function Dashboard() {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', padding: '24px' }}>
       {/* Modals */}
-      {showWeekPlan && <WeekPlanModal onClose={() => setShowWeekPlan(false)} plannedDealers={plannedDealers} otherDealers={otherDealers} />}
+      {showWeekPlan && <WeekPlanModal onClose={() => setShowWeekPlan(false)} plannedDealers={recommendedDealers} otherDealers={demoDealers} />}
       {showPlanDay && <PlanMyDayModal onClose={() => setShowPlanDay(false)} />}
 
       {/* Section 1 — Greeting + Actions */}
@@ -1433,7 +1636,7 @@ export default function Dashboard() {
       </div>
 
       {/* Section 3 — Tabs */}
-      <div style={{ display: 'flex', gap: '0', borderBottom: '1px solid var(--border)', marginBottom: activeTab === 'prioritize' ? '0' : '24px' }}>
+      <div style={{ display: 'flex', gap: '0', borderBottom: '1px solid var(--border)', marginBottom: '24px' }}>
         {tabs.map((tab) => (
           <button
             key={tab.id}
@@ -1457,73 +1660,26 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* Dealer / IR sub-filter — visible only on Prioritize tab */}
-      {activeTab === 'prioritize' && (() => {
-        const allDealers = dataService.getPrioritizedDealers();
-        const dealerCount = allDealers.filter((d) => d.account_type === 'Dealer').length;
-        const irCount     = allDealers.filter((d) => d.account_type === 'IR').length;
-        const subFilters  = [
-          { id: 'all',    label: `All Accounts (${allDealers.length})` },
-          { id: 'Dealer', label: `Dealers (${dealerCount})` },
-          { id: 'IR',     label: `IRs (${irCount})` },
-        ];
-        return (
-          <div style={{ display: 'flex', gap: '0', borderBottom: '1px solid var(--border)', marginBottom: '24px', backgroundColor: 'var(--surface)' }}>
-            {subFilters.map((f) => (
-              <button
-                key={f.id}
-                onClick={() => { setAccountFilter(f.id); setShowAll(false); }}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  borderBottom: accountFilter === f.id ? '2px solid #A100FF' : '2px solid transparent',
-                  color: accountFilter === f.id ? '#FFFFFF' : '#A0A0A0',
-                  fontWeight: accountFilter === f.id ? '600' : '400',
-                  fontSize: '13px',
-                  padding: '10px 20px',
-                  cursor: 'pointer',
-                  fontFamily: 'inherit',
-                  marginBottom: '-1px',
-                  transition: 'color 0.2s',
-                }}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
-        );
-      })()}
-
       {/* Section 4 — Dealer List */}
       {activeTab === 'dealers' && (
         <div>
-          {/* Planned Today — drop zone */}
+          {/* Recommended for Today — drop zone, max 3 */}
           <div
             style={{ marginBottom: '20px' }}
             onDragOver={(e) => { if (canPlanMore) { e.preventDefault(); setDragOver(true); } }}
             onDragLeave={() => setDragOver(false)}
             onDrop={(e) => {
-              e.preventDefault();
-              setDragOver(false);
+              e.preventDefault(); setDragOver(false);
               const id = e.dataTransfer.getData('text/plain');
               if (id && canPlanMore) moveToPlanned(id);
             }}
           >
-            <div
-              style={{
-                fontSize: '11px',
-                fontWeight: '600',
-                color: 'var(--text-secondary)',
-                letterSpacing: '0.08em',
-                textTransform: 'uppercase',
-                borderLeft: `3px solid ${dragOver ? '#A100FF' : '#A100FF'}`,
-                paddingLeft: '10px',
-                marginBottom: '12px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-              }}
-            >
+            <div style={{
+              fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)',
+              letterSpacing: '0.08em', textTransform: 'uppercase',
+              borderLeft: `3px solid ${dragOver ? '#A100FF' : '#A100FF'}`, paddingLeft: '10px',
+              marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px',
+            }}>
               Recommended for Today
               {dragOver && (
                 <span style={{ fontSize: '10px', color: '#A100FF', fontWeight: '500', textTransform: 'none', letterSpacing: 0 }}>
@@ -1531,36 +1687,38 @@ export default function Dashboard() {
                 </span>
               )}
             </div>
-            {plannedDealers.length === 0 ? (
+            <div style={{ fontSize: '11px', color: 'var(--text-muted)', paddingLeft: '13px', marginBottom: '12px' }}>
+              {dealersLoading ? 'Computing recommendations…'
+                : `${plannedDealers.length} of 3 slots filled · Postpone a visit to free a slot`}
+            </div>
+            {dealersLoading ? (
+              <div style={{ padding: '16px', color: 'var(--text-secondary)', fontSize: '13px' }}>
+                Computing recommendations…
+              </div>
+            ) : plannedDealers.length === 0 ? (
               <div style={{
-                border: '2px dashed #2A2A2A', borderRadius: '8px', padding: '24px',
+                border: '2px dashed var(--border)', borderRadius: '8px', padding: '24px',
                 textAlign: 'center', color: '#505050', fontSize: '13px',
               }}>
                 Drag a dealership here to plan for today
               </div>
             ) : (
               plannedDealers.map((d) => (
-                <DealerCard key={d.id} dealer={d} isPlanned={true} onPostpone={postponeDealer} isManager={isManager} />
+                <DealerCard key={d.id} dealer={d} isPlanned={true} isManager={isManager}
+                  onPostpone={postponeDealer} canPlan={canPlanMore} />
               ))
             )}
           </div>
 
           <div style={{ borderTop: '1px solid var(--border)', margin: '20px 0' }} />
 
-          {/* My Dealerships — draggable */}
+          {/* My Dealerships — draggable when a slot is free */}
           <div>
-            <div
-              style={{
-                fontSize: '11px',
-                fontWeight: '600',
-                color: 'var(--text-secondary)',
-                letterSpacing: '0.08em',
-                textTransform: 'uppercase',
-                borderLeft: '3px solid #2A2A2A',
-                paddingLeft: '10px',
-                marginBottom: '8px',
-              }}
-            >
+            <div style={{
+              fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)',
+              letterSpacing: '0.08em', textTransform: 'uppercase',
+              borderLeft: '3px solid #2A2A2A', paddingLeft: '10px', marginBottom: '8px',
+            }}>
               My Dealerships
             </div>
             <div style={{ fontSize: '11px', color: canPlanMore ? '#A100FF' : '#505050', paddingLeft: '13px', marginBottom: '12px' }}>
@@ -1568,15 +1726,36 @@ export default function Dashboard() {
                 ? `${3 - plannedDealers.length} slot${3 - plannedDealers.length !== 1 ? 's' : ''} available — drag a card up or click + Plan Today`
                 : 'Postpone a visit above to free a slot'}
             </div>
-            {otherDealers.map((d) => (
-              <DealerCard key={d.id} dealer={d} isPlanned={false} isDraggable={true} canPlan={canPlanMore} onPlanToday={moveToPlanned} isManager={isManager} />
-            ))}
+            {dealersLoading ? (
+              <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-secondary)', fontSize: '13px' }}>
+                Loading dealers...
+              </div>
+            ) : (
+              <>
+                {visibleDealers.map((d) => (
+                  <DealerCard key={d.id} dealer={d} isPlanned={false} isManager={isManager}
+                    isDraggable={true} canPlan={canPlanMore} onPlanToday={moveToPlanned} />
+                ))}
+                {otherDealers.length > DEALER_PAGE_SIZE && (
+                  <button
+                    onClick={() => setShowAllDealers((p) => !p)}
+                    style={{
+                      width: '100%', marginTop: '8px', padding: '10px',
+                      background: 'transparent', border: '1px solid var(--border)',
+                      borderRadius: '6px', color: '#A100FF', fontSize: '13px',
+                      cursor: 'pointer', fontFamily: 'inherit', fontWeight: '600',
+                    }}
+                  >
+                    {showAllDealers
+                      ? `Show first ${DEALER_PAGE_SIZE} only ▲`
+                      : `Show all ${otherDealers.length} dealers ▼`}
+                  </button>
+                )}
+              </>
+            )}
           </div>
         </div>
       )}
-
-      {/* Prioritize tab */}
-      {activeTab === 'prioritize' && <PrioritizationView accountFilter={accountFilter} showAll={showAll} setShowAll={setShowAll} />}
 
       {/* Placeholder tabs */}
       {activeTab === 'actions' && (

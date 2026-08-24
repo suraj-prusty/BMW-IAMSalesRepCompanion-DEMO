@@ -11,7 +11,12 @@
 //   const dealers = await api.getDealers();
 // ────────────────────────────────────────────────────────────────────────────
 
-const API_BASE = "/api";
+// Data endpoints → AWS FastAPI backend
+const API_BASE = import.meta.env.VITE_API_URL || "/api";
+// AI endpoints → local Express server (holds Azure OpenAI key server-side)
+// Dev: set VITE_AI_URL=http://localhost:8080 in .env (run `node server.js` separately)
+// Prod: leave unset — empty string = same origin = Express serves everything
+const AI_BASE  = import.meta.env.VITE_AI_URL  ?? "";
 
 // ── Internal: generic fetch wrapper ────────────────────────────────────────
 async function request(endpoint, options = {}) {
@@ -20,7 +25,6 @@ async function request(endpoint, options = {}) {
   const config = {
     headers: {
       "Content-Type": "application/json",
-      // Attach auth token if available (for future JWT use)
       ...(sessionStorage.getItem("authToken")
         ? { Authorization: `Bearer ${sessionStorage.getItem("authToken")}` }
         : {}),
@@ -38,23 +42,40 @@ async function request(endpoint, options = {}) {
   return response.json();
 }
 
+// ── Demo credentials (client-side auth — no backend needed for login) ───────
+// These match the values in .env. Replace with real IdP (Azure AD) in prod.
+const DEMO_USERS = [
+  {
+    email:    "demo.agenticai@corporate.com",
+    password: "AgenticAI@2026",
+    user:     { name: "Demo User",    email: "demo.agenticai@corporate.com", isManager: false },
+  },
+  {
+    email:    "manager.demo@corporate.com",
+    password: "Manager@2026",
+    user:     { name: "Demo Manager", email: "manager.demo@corporate.com",   isManager: true },
+  },
+];
+
 // ── Public API ─────────────────────────────────────────────────────────────
 
 export const api = {
-  // ── Auth ─────────────────────────────────────────────────────────────────
+  // ── Auth (client-side — no backend call needed) ──────────────────────────
   async login(email, password) {
-    const data = await request("/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ email, password }),
-    });
+    const match = DEMO_USERS.find(
+      (u) => u.email === email.trim() && u.password === password
+    );
 
-    if (data.token) {
-      sessionStorage.setItem("authToken", data.token);
-      sessionStorage.setItem("isAuthenticated", "true");
-      sessionStorage.setItem("user", JSON.stringify(data.user));
+    if (!match) {
+      return { success: false, error: "Invalid email or password" };
     }
 
-    return data;
+    const token = btoa(`${match.email}:${Date.now()}`);
+    sessionStorage.setItem("authToken", token);
+    sessionStorage.setItem("isAuthenticated", "true");
+    sessionStorage.setItem("user", JSON.stringify(match.user));
+
+    return { success: true, user: match.user, token };
   },
 
   logout() {
@@ -81,19 +102,49 @@ export const api = {
 
   // ── AI: Chat (for ChatBot component) ─────────────────────────────────────
   async chat(messages, systemContext) {
-    const data = await request("/ai/chat", {
+    const response = await fetch(`${AI_BASE}/api/ai/chat`, {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ messages, systemContext }),
     });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || `Request failed with status ${response.status}`);
+    }
+    const data = await response.json();
     return data.reply;
   },
 
   // ── AI: Generate (pitch, summary, email) ─────────────────────────────────
   async generate({ systemPrompt, userPrompt, maxTokens = 350, temperature = 0.7 }) {
-    const data = await request("/ai/generate", {
+    const response = await fetch(`${AI_BASE}/api/ai/generate`, {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ systemPrompt, userPrompt, maxTokens, temperature }),
     });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || `Request failed with status ${response.status}`);
+    }
+    const data = await response.json();
     return data.reply;
+  },
+
+  // ── Results: ABC Segmentation ─────────────────────────────────────────────
+  async getAbcSegmentation() {
+    return request("/results/abc-segmentation");
+  },
+
+  // ── Dealers ───────────────────────────────────────────────────────────────
+  async getDealers() {
+    return request("/dealers");
+  },
+
+  async getDealerByCode(code) {
+    return request(`/dealers/${code}`);
+  },
+
+  async getInsights(code) {
+    return request(`/dealers/${code}/insights`);
   },
 };

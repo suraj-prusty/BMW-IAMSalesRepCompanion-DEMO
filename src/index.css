@@ -6,14 +6,23 @@
 
 * { box-sizing: border-box; }
 
+/* BMW background image crossfade carousel */
+@keyframes bgCarousel {
+  0%     { opacity: 0; }
+  8.33%  { opacity: 1; }  /* 1s fade-in  */
+  16.67% { opacity: 1; }  /* 1s hold     */
+  25%    { opacity: 0; }  /* 1s fade-out */
+  100%   { opacity: 0; }  /* hidden for rest of cycle */
+}
+
 /* ── Theme tokens ─────────────────────────────────────────── */
 :root {
-  /* Dark (default) */
-  --bg:             #0A0A0A;
-  --surface:        #141414;
-  --surface-raised: #1C1C1C;
-  --border:         #2A2A2A;
-  --border-subtle:  #1E1E1E;
+  /* Dark (default) — semi-transparent so BMW background image shows through */
+  --bg:             rgba(10, 10, 10, 0.65);
+  --surface:        rgba(20, 20, 20, 0.68);
+  --surface-raised: rgba(28, 28, 28, 0.75);
+  --border:         rgba(42, 42, 42, 0.80);
+  --border-subtle:  rgba(30, 30, 30, 0.80);
   --text-primary:   #FFFFFF;
   --text-secondary: #A0A0A0;
   --text-muted:     #606060;
@@ -48,10 +57,14 @@ html, body, #root {
   margin: 0;
   padding: 0;
   min-height: 100vh;
-  background-color: var(--bg);
+  background-color: #0A0A0A; /* solid dark base — prevents white flash before React mounts */
   color: var(--text-primary);
   font-family: 'DM Sans', sans-serif;
   transition: background-color 0.25s, color 0.25s;
+}
+
+[data-theme="light"] body {
+  background-color: #F2F2F7;
 }
 
 /* ── Scrollbar ────────────────────────────────────────────── */

@@ -1,8 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Sparkles, Loader2, RefreshCw } from 'lucide-react';
 import BackButton from '../components/BackButton';
-import { dataService } from '../data/dataService';
 import { api } from '../services/api';
 
 // ── Badge map ─────────────────────────────────────────────────────────────────
@@ -10,17 +9,18 @@ const BADGE       = { HIGH: 'badge-high', MED: 'badge-med', LOW: 'badge-low' };
 const BADGE_LABEL = { HIGH: 'HIGH PRIORITY', MED: 'MEDIUM PRIORITY', LOW: 'LOW PRIORITY' };
 
 // ── Dynamic prompt builders ───────────────────────────────────────────────────
-const PITCH_SYSTEM = `You are an expert IAM sales coach. Generate a personalised pre-visit pitch for Marcus Schmidt visiting a dealer today. Write exactly 2-3 paragraphs of flowing prose — no bullet points, no headings, no numbered lists.
-Paragraph 1: a warm, confident opening addressed to the dealer principal by first name, referencing the ongoing relationship and the purpose of today's visit.
-Paragraph 2: highlight the key performance gaps and their business impact — frame it collaboratively, not as a criticism, and reference what was discussed or agreed at the last visit to show continuity.
-Paragraph 3: clearly outline the 1-2 priority actions Marcus needs the dealer to commit to today, including a persuasion angle — why acting now directly benefits the dealer's revenue or standing. Keep it human, specific, and action-oriented.`;
+const PITCH_SYSTEM = `You are an expert IAM sales coach. Generate a personalised pre-visit pitch for Marcus Schmidt visiting a dealer today. Return ONLY a valid JSON array — no markdown fences, no explanation, no surrounding text. Each element must have exactly three string fields:
+- "issue": the specific performance topic or opportunity (short label, e.g. "Engagement & Recency Risk")
+- "data": 1–2 key metrics or facts that support it (concise, cite actual numbers)
+- "action": an exact question or proposal to raise during the visit (direct, persuasive, specific)
+Generate 4–5 pitch points covering the most critical issues and one positive/opportunity angle. Output must be parseable by JSON.parse().`;
 
 const SUMMARY_SYSTEM = `You are an IAM territory intelligence analyst. Generate a pre-visit dealer intelligence summary of 5-6 sentences covering: overall performance posture, critical metric gaps (always cite the actual numbers), revenue at risk, top priorities for today's visit, and a brief high-level recap of what was discussed or agreed at the last visit. Third person, no bullet points, factual and concise.`;
 
 function buildKpiLines(dealer) {
   const fmtPct = (v) => v == null ? '—' : `${v > 0 ? '+' : ''}${v.toFixed(1)}%`;
   return [
-    `- Revenue vs Target: ${fmtPct(dealer.revenueVsTarget)} (target: 0%)`,
+    `- Revenue Achievement: ${dealer.revenueAchvPct != null ? `${dealer.revenueAchvPct.toFixed(1)}%` : '—'} of target (target: 100%)`,
     `- ABC Segment: ${dealer.abcSegment || '—'}`,
     `- Revenue YoY Growth: ${fmtPct(dealer.yoyGrowth)}`,
     `- Parts Purchase YoY: ${fmtPct(dealer.partsYoY)}`,
@@ -49,42 +49,213 @@ function buildSummaryPrompt(dealer, data) {
   return `Generate a pre-visit intelligence summary for ${dealer.name}.\n\nDealer: ${dealer.name}, ${dealer.location}\nPriority: ${dealer.priority} | Last visit: ${lv?.date || 'recent'} (${dealer.lastVisit})\nAttendees: ${lv?.attendees || ''}\n\nKPIs:\n${buildKpiLines(dealer)}\n\nOpen actions:\n${actionLines}\n\nTop issues:\n${issueLines}\n\nLast visit notes (high level — summarise, do not list verbatim):\n${visitNoteLines}`;
 }
 
+// ── Normalize raw API response to dealer detail shape ─────────────────────────
+function normalizeDealerDetail(raw) {
+  const kpis        = raw.kpis || {};
+  const abc         = kpis.abc_segmentation           || {};
+  const purchaseRvt = kpis.purchase_revenue_vs_target || {};
+  const saleRvt     = kpis.sale_revenue_vs_target     || {};
+  const legacyRvt   = kpis.revenue_vs_target          || {};
+  const ryoy        = kpis.revenue_yoy                || {};
+  const yoyComp     = kpis.yoy_comparison             || {};
+  const momDecline  = kpis.mom_decline                || {};
+  const custTrend   = kpis.customer_trend             || {};
+
+  // Pick primary RVT source: explicit purchase > explicit sale > legacy
+  const hasPurchaseData = purchaseRvt.M2_AchvPct != null || purchaseRvt.M2_Target != null;
+  const hasSaleData     = saleRvt.M2_AchvPct != null     || saleRvt.M2_Target != null;
+  const rvt             = hasPurchaseData ? purchaseRvt : hasSaleData ? saleRvt : legacyRvt;
+
+  // revenueVsTarget
+  let revenueVsTarget = null;
+  if (rvt.M2_AchvPct != null) {
+    revenueVsTarget = rvt.M2_AchvPct - 100;
+  } else if (rvt.M2_Actual != null && rvt.M2_Target != null && rvt.M2_Target !== 0) {
+    revenueVsTarget = (rvt.M2_Actual / rvt.M2_Target - 1) * 100;
+  }
+
+  // yoyGrowth
+  let yoyGrowth = null;
+  if (ryoy.cy_revenue_eur > 0 && ryoy.ly_revenue_eur > 0) {
+    yoyGrowth = (ryoy.cy_revenue_eur / ryoy.ly_revenue_eur - 1) * 100;
+  }
+
+  // partsYoY — average all numeric values in yoy_comparison
+  let partsYoY = null;
+  const yoyVals = Object.values(yoyComp).map((v) => parseFloat(v)).filter((v) => !isNaN(v));
+  if (yoyVals.length > 0) {
+    partsYoY = yoyVals.reduce((s, v) => s + v, 0) / yoyVals.length;
+  }
+
+  // momSalesGrowth: "None" → 0; comma-separated numbers → average (negative = decline)
+  let momSalesGrowth = null;
+  const momStr = momDecline.categories_with_decline_pct;
+  if (momStr) {
+    if (momStr === 'None') {
+      momSalesGrowth = 0;
+    } else {
+      const nums = momStr.split(',').map((v) => parseFloat(v.trim())).filter((v) => !isNaN(v));
+      if (nums.length > 0) {
+        momSalesGrowth = nums.reduce((s, v) => s + v, 0) / nums.length;
+      }
+    }
+  }
+
+  // activeClientsIrs + customerMoM from "apr, may, jun" customer counts
+  let activeClientsIrs = null;
+  let customerMoM      = null;
+  const cStr = custTrend.customer_count_apr_may_jun;
+  if (cStr) {
+    const nums = cStr.split(',').map((v) => parseInt(v.trim(), 10)).filter((v) => !isNaN(v));
+    const lastNonZero = [...nums].reverse().find((v) => v !== 0);
+    activeClientsIrs = lastNonZero != null ? lastNonZero : null;
+    if (nums.length >= 2) {
+      const prev = nums[nums.length - 2];
+      const curr = nums[nums.length - 1];
+      customerMoM = prev !== 0
+        ? Math.round((curr - prev) / prev * 100 * 10) / 10
+        : curr > 0 ? 100 : null;
+    }
+  }
+
+  const abcSegment = abc.segment || null;
+  const priority   = abcSegment === 'A' ? 'LOW' : abcSegment === 'B' ? 'MED' : 'HIGH';
+  const lastVisit  = raw.run_date ? `Data: ${raw.run_date.slice(0, 10)}` : '—';
+
+  return {
+    id:               raw.dealer_code,
+    dealer_code:      raw.dealer_code,
+    name:             raw.dealer_name,
+    location:         abc.country || '—',
+    abcSegment,
+    revenueAchvPct:   rvt.M2_AchvPct ?? null,
+    revenueVsTarget,
+    revenueTarget:    rvt.M2_Target  ?? null,
+    revenueActual:    rvt.M2_Actual  ?? null,
+    yoyGrowth,
+    partsYoY,
+    momSalesGrowth,
+    activeClientsIrs,
+    customerMoM,
+    openActionsCount: null,
+    lastPurchaseMonth: null,
+    priority,
+    lastVisit,
+    lastVisitDate:    null,
+    visitTime:        null,
+    dormancyScore:    null,
+  };
+}
+
 export default function DealerBriefing() {
   const navigate = useNavigate();
   const { id } = useParams();
   const isManager = api.isManager();
 
-  // Resolve dealer + data from URL id
-  const dealer = dataService.getDealerById(id);
-  const data   = dataService.getDealerData(dealer.id);
+  // ── API state ─────────────────────────────────────────────────────────────────
+  const [dealerData,      setDealerData]      = useState(null);
+  const [apiLoading,      setApiLoading]      = useState(true);
+  const [apiError,        setApiError]        = useState(null);
+  const [insightsData,    setInsightsData]    = useState(null);
+  const [insightsLoading, setInsightsLoading] = useState(true);
+
+  // ── UI state ──────────────────────────────────────────────────────────────────
+  const [showFullKPI,    setShowFullKPI]    = useState(false);
+  const [pitch,          setPitch]          = useState(null);
+  const [pitchLoading,   setPitchLoading]   = useState(false);
+  const [pitchError,     setPitchError]     = useState('');
+  const [pitchCount,     setPitchCount]     = useState(0);
+  const [summary,        setSummary]        = useState('');
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryError,   setSummaryError]   = useState('');
+  const [summaryCount,   setSummaryCount]   = useState(0);
+
+  useEffect(() => {
+    api.getDealerByCode(id)
+      .then(data => {
+        console.log('[GET /dealers/:code]', data);
+        setDealerData(data);
+      })
+      .catch(err => {
+        console.error('[GET /dealers/:code] error:', err);
+        setApiError(err.message);
+      })
+      .finally(() => setApiLoading(false));
+  }, [id]);
+
+  useEffect(() => {
+    api.getInsights(id)
+      .then(data => {
+        console.log('[GET /dealers/:code/insights]', data);
+        setInsightsData(data);
+      })
+      .catch(err => console.error('[GET /dealers/:code/insights] error:', err))
+      .finally(() => setInsightsLoading(false));
+  }, [id]);
+
+  // ── Loading gate ───────────────────────────────────────────────────────────────
+  if (apiLoading) {
+    return (
+      <div style={{ minHeight: '100vh', background: 'var(--bg)', padding: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>Loading dealer data...</div>
+      </div>
+    );
+  }
+
+  // ── Error gate ─────────────────────────────────────────────────────────────────
+  if (apiError && !dealerData) {
+    return (
+      <div style={{ minHeight: '100vh', background: 'var(--bg)', padding: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ color: '#EF4444', fontSize: '14px' }}>Error loading dealer: {apiError}</div>
+      </div>
+    );
+  }
+
+  // ── Derive dealer + data stub ──────────────────────────────────────────────────
+  const dealer = normalizeDealerDetail(dealerData);
+  // Map top_issues from insights (snake_case → camelCase for UI)
+  const mappedIssues = (insightsData?.top_issues || []).map(i => ({
+    num:       i.num,
+    title:     i.title,
+    rootCause: i.root_cause,
+    impact:    i.impact,
+  }));
+  const data = { contacts: [], issues: mappedIssues, openActions: [], visitNotes: [], lastVisit: [], agenda: [] };
 
   // ── KPI helpers ──────────────────────────────────────────────────────────────
   const fmtPct = (v, dec = 1) =>
     v == null ? '—' : `${v > 0 ? '+' : ''}${v.toFixed(dec)}%`;
+  const fmtAchv = (v, dec = 1) =>
+    v == null ? '—' : `${v.toFixed(dec)}%`;
   const fmtEur = (n) =>
     n == null ? '—' : n >= 1_000_000 ? `€${(n / 1_000_000).toFixed(1)}M` : `€${Math.round(n / 1000)}K`;
   const pctColor = (v, warnAt = -20) =>
     v == null ? '#606060' : v >= 0 ? '#22C55E' : v >= warnAt ? '#F59E0B' : '#EF4444';
+  const achvColor = (v) =>
+    v == null ? '#606060' : v >= 100 ? '#22C55E' : v >= 60 ? '#F59E0B' : '#EF4444';
   const abcColor = (s) =>
     s === 'A' ? '#22C55E' : s === 'B' ? '#F59E0B' : s ? '#EF4444' : '#606060';
 
-  // KPI bar — 4 pills shown at the top (from real Excel data via dataService)
+  // KPI bar — 4 pills shown at the top (from real API data)
   const kpiBarData = [
-    { label: 'Rev vs Target', value: fmtPct(dealer.revenueVsTarget), color: pctColor(dealer.revenueVsTarget) },
-    { label: 'ABC Tier',      value: dealer.abcSegment || '—',        color: abcColor(dealer.abcSegment) },
-    { label: 'Rev YoY',       value: fmtPct(dealer.yoyGrowth),        color: pctColor(dealer.yoyGrowth, -10) },
-    { label: 'Parts YoY',     value: fmtPct(dealer.partsYoY),         color: pctColor(dealer.partsYoY, 0) },
+    { label: 'Rev Achievement', value: fmtAchv(dealer.revenueAchvPct), color: achvColor(dealer.revenueAchvPct) },
+    { label: 'ABC Tier',        value: dealer.abcSegment || '—',        color: abcColor(dealer.abcSegment) },
+    { label: 'Rev YoY',         value: fmtPct(dealer.yoyGrowth),        color: pctColor(dealer.yoyGrowth, -10) },
+    { label: 'Cust MoM',        value: fmtPct(dealer.customerMoM),      color: pctColor(dealer.customerMoM, 0) },
   ];
 
-  // Full KPI table — real KPIs first, then dealer-specific rows from CSV
+  // Full KPI table
   const abcDesc = { A: 'Top revenue — protect & grow', B: 'Mid-tier — develop & move up', C: 'Low contribution — qualify or churn' };
   const fullKpiTable = [
     {
       metric: 'Revenue vs Target',
-      actual: fmtPct(dealer.revenueVsTarget),
-      target: fmtEur(dealer.revenueTarget),
-      note:   dealer.revenueVsTarget < 0 ? 'Under target — gap to close' : 'Above target',
-      color:  pctColor(dealer.revenueVsTarget),
+      actual: fmtAchv(dealer.revenueAchvPct),
+      target: '100%',
+      note:   dealer.revenueAchvPct == null ? '—'
+            : dealer.revenueAchvPct >= 100   ? 'On or above target'
+            : dealer.revenueAchvPct >= 60    ? 'Below target — monitor'
+            : 'Under target — gap to close',
+      color:  achvColor(dealer.revenueAchvPct),
     },
     {
       metric: 'ABC Segment',
@@ -149,6 +320,7 @@ export default function DealerBriefing() {
             : dealer.momSalesGrowth >= -5     ? '#F59E0B' : '#EF4444',
     },
   ];
+
   const lv           = data.lastVisit[0] || {};
   const visitSubtitle = [
     dealer.location,
@@ -156,37 +328,24 @@ export default function DealerBriefing() {
     `Last visit: ${dealer.lastVisit}${dealer.lastVisitDate ? ` · ${dealer.lastVisitDate}` : ''}`,
   ].filter(Boolean).join(' · ');
 
-  const [showFullKPI, setShowFullKPI] = useState(false);
-  const [pitch, setPitch]               = useState('');
-  const [pitchLoading, setPitchLoading] = useState(false);
-  const [pitchError, setPitchError]     = useState('');
-  const [pitchCount, setPitchCount]     = useState(0);
-  const [summary, setSummary]               = useState('');
-  const [summaryLoading, setSummaryLoading] = useState(false);
-  const [summaryError, setSummaryError]     = useState('');
-  const [summaryCount, setSummaryCount]     = useState(0);
-
-  const handleGeneratePitch = async () => {
-    setPitchLoading(true); setPitchError('');
-    try {
-      const result = await api.generate({
-        systemPrompt: PITCH_SYSTEM,
-        userPrompt: buildPitchPrompt(dealer, data),
-        maxTokens: 600,
-        temperature: 0.85,
-      });
-      setPitch(result);
-      setPitchCount(c => c + 1);
-    } catch (err) { setPitchError(`Failed to generate pitch: ${err.message}`); }
-    finally { setPitchLoading(false); }
-  };
-
   const handleGenerateSummary = async () => {
+    // First click ("Generate"): show cached endpoint content with brief loading feel
+    if (!summary && insightsData?.summary) {
+      setSummaryLoading(true);
+      await new Promise((r) => setTimeout(r, 1200));
+      setSummary(insightsData.summary);
+      setSummaryLoading(false);
+      return;
+    }
+    // Subsequent clicks ("Regenerate"): rephrase via Azure OpenAI
     setSummaryLoading(true); setSummaryError('');
     try {
+      const userPrompt = summary
+        ? `Rephrase and improve the following dealer intelligence summary. Keep all facts and numbers exactly the same — only improve clarity, flow, and engagement. Return only the rephrased text, no preamble.\n\nCurrent summary:\n${summary}`
+        : buildSummaryPrompt(dealer, data);
       const result = await api.generate({
         systemPrompt: SUMMARY_SYSTEM,
-        userPrompt: buildSummaryPrompt(dealer, data),
+        userPrompt,
         maxTokens: 420,
         temperature: 0.7,
       });
@@ -194,6 +353,41 @@ export default function DealerBriefing() {
       setSummaryCount(c => c + 1);
     } catch (err) { setSummaryError(`Failed to generate summary: ${err.message}`); }
     finally { setSummaryLoading(false); }
+  };
+
+  const handleGeneratePitch = async () => {
+    // First click ("Generate"): show cached endpoint content with brief loading feel
+    if (!pitch && insightsData?.pitch) {
+      setPitchLoading(true);
+      await new Promise((r) => setTimeout(r, 1200));
+      setPitch(insightsData.pitch);
+      setPitchLoading(false);
+      return;
+    }
+    // Subsequent clicks ("Regenerate"): rephrase via Azure OpenAI
+    setPitchLoading(true); setPitchError('');
+    try {
+      const userPrompt = pitch
+        ? `Rephrase and improve the action points in the following pitch. Keep the same "issue" labels and "data" metrics exactly — only rephrase the "action" field to be more compelling and direct. Return ONLY the same JSON array, parseable by JSON.parse(), no markdown fences.\n\nCurrent pitch:\n${JSON.stringify(pitch, null, 2)}`
+        : buildPitchPrompt(dealer, data);
+      const raw = await api.generate({
+        systemPrompt: PITCH_SYSTEM,
+        userPrompt,
+        maxTokens: 800,
+        temperature: 0.85,
+      });
+      let parsed;
+      try {
+        const clean = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/, '').trim();
+        parsed = JSON.parse(clean);
+        if (!Array.isArray(parsed)) throw new Error('not array');
+      } catch {
+        parsed = [{ issue: 'Pitch', data: '', action: raw }];
+      }
+      setPitch(parsed);
+      setPitchCount(c => c + 1);
+    } catch (err) { setPitchError(`Failed to generate pitch: ${err.message}`); }
+    finally { setPitchLoading(false); }
   };
 
   return (
@@ -280,6 +474,9 @@ export default function DealerBriefing() {
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span className="section-label" style={{ margin: 0 }}>AI Summary</span>
                 <Sparkles size={13} color="#A100FF" />
+                {insightsData?.summary && summaryCount === 0 && (
+                  <span style={{ fontSize: '10px', color: '#22C55E', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.25)', borderRadius: '3px', padding: '1px 6px' }}>Cached · {insightsData.run_date}</span>
+                )}
                 {summaryCount > 0 && <span style={{ fontSize: '11px', color: 'var(--text-secondary)', background: 'var(--surface-raised)', border: '1px solid var(--border)', borderRadius: '20px', padding: '1px 8px' }}>v{summaryCount}</span>}
               </div>
               <button
@@ -305,9 +502,9 @@ export default function DealerBriefing() {
               >
                 {summaryLoading
                   ? <><Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> Analysing...</>
-                  : summaryCount === 0
-                    ? <><Sparkles size={12} /> Generate Summary</>
-                    : <><RefreshCw size={12} /> Refresh</>
+                  : summary
+                    ? <><RefreshCw size={12} /> Regenerate</>
+                    : <><Sparkles size={12} /> Generate Summary</>
                 }
               </button>
             </div>
@@ -371,9 +568,21 @@ export default function DealerBriefing() {
 
           {/* Top Issues */}
           <div className="card">
-            <div className="section-label">Top Issues to Address</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+              <span className="section-label" style={{ margin: 0 }}>Top Issues to Address</span>
+              {insightsLoading && <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Loading…</span>}
+              {!insightsLoading && insightsData && (
+                <span style={{ fontSize: '10px', color: '#22C55E', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.25)', borderRadius: '3px', padding: '1px 6px' }}>
+                  Cached · {insightsData.run_date}
+                </span>
+              )}
+            </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {data.issues.map((issue) => (
+              {insightsLoading ? (
+                <div style={{ color: 'var(--text-secondary)', fontSize: '13px', padding: '8px 0' }}>Generating insights…</div>
+              ) : data.issues.length === 0 ? (
+                <div style={{ color: 'var(--text-muted)', fontSize: '13px', padding: '8px 0' }}>No issues data available for this dealer.</div>
+              ) : data.issues.map((issue) => (
                 <div
                   key={issue.num}
                   style={{
@@ -422,11 +631,15 @@ export default function DealerBriefing() {
           </div>
 
           {/* AI Generated Pitch */}
+
           <div className="card">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span className="section-label" style={{ margin: 0 }}>AI Generated Pitch</span>
                 <Sparkles size={13} color="#A100FF" />
+                {insightsData?.pitch && pitchCount === 0 && (
+                  <span style={{ fontSize: '10px', color: '#22C55E', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.25)', borderRadius: '3px', padding: '1px 6px' }}>Cached · {insightsData.run_date}</span>
+                )}
                 {pitchCount > 0 && <span style={{ fontSize: '11px', color: 'var(--text-secondary)', background: 'var(--surface-raised)', border: '1px solid var(--border)', borderRadius: '20px', padding: '1px 8px' }}>v{pitchCount}</span>}
               </div>
               <button
@@ -452,9 +665,9 @@ export default function DealerBriefing() {
               >
                 {pitchLoading
                   ? <><Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> Generating...</>
-                  : pitchCount === 0
-                    ? <><Sparkles size={13} /> Generate Pitch</>
-                    : <><RefreshCw size={13} /> Regenerate</>
+                  : pitch
+                    ? <><RefreshCw size={13} /> Regenerate</>
+                    : <><Sparkles size={13} /> Generate Pitch</>
                 }
               </button>
             </div>
@@ -467,7 +680,7 @@ export default function DealerBriefing() {
             )}
 
             {/* Empty state */}
-            {!pitch && !pitchLoading && (
+            {(!pitch || pitch.length === 0) && !pitchLoading && (
               <div style={{ minHeight: '100px', border: '1px dashed #2A2A2A', borderRadius: '6px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px', color: 'var(--text-secondary)', fontSize: '13px' }}>
                 <Sparkles size={20} color="#2A2A2A" />
                 Click "Generate Pitch" to create a personalised AI opening pitch
@@ -483,14 +696,26 @@ export default function DealerBriefing() {
               </div>
             )}
 
-            {/* Generated pitch — editable */}
-            {pitch && !pitchLoading && (
-              <textarea
-                className="input-field"
-                value={pitch}
-                onChange={(e) => setPitch(e.target.value)}
-                style={{ minHeight: '120px', lineHeight: '1.7', fontSize: '13px' }}
-              />
+            {/* Generated pitch — all points in one card */}
+            {pitch && pitch.length > 0 && !pitchLoading && (
+              <div style={{ background: 'var(--surface-raised)', border: '1px solid var(--border)', borderRadius: '8px', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                {pitch.map((item, i) => (
+                  <div key={i}>
+                    {i > 0 && <div style={{ height: '1px', background: 'var(--border)', marginBottom: '14px' }} />}
+                    <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '4px' }}>
+                      {item.issue}
+                    </div>
+                    {item.data && (
+                      <div style={{ fontSize: '12px', color: '#A100FF', marginBottom: '6px', fontStyle: 'italic' }}>
+                        {item.data}
+                      </div>
+                    )}
+                    <div style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.65 }}>
+                      {item.action}
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         </div>
