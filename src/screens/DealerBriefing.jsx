@@ -128,7 +128,9 @@ function normalizeDealerDetail(raw) {
     name:             raw.dealer_name,
     location:         abc.country || '—',
     abcSegment,
-    revenueAchvPct:   rvt.M2_AchvPct ?? null,
+    revenueAchvPct:   rvt.M2_AchvPct        ?? null,
+    saleAchvPct:      saleRvt.M2_AchvPct    ?? null,
+    purchaseAchvPct:  purchaseRvt.M2_AchvPct ?? null,
     revenueVsTarget,
     revenueTarget:    rvt.M2_Target  ?? null,
     revenueActual:    rvt.M2_Actual  ?? null,
@@ -227,6 +229,8 @@ export default function DealerBriefing() {
     v == null ? '—' : `${v > 0 ? '+' : ''}${v.toFixed(dec)}%`;
   const fmtAchv = (v, dec = 1) =>
     v == null ? '—' : `${v.toFixed(dec)}%`;
+  const fmtAchvPos = (v, dec = 1) =>
+    v == null ? '—' : `${Math.max(0, v).toFixed(dec)}%`;
   const fmtEur = (n) =>
     n == null ? '—' : n >= 1_000_000 ? `€${(n / 1_000_000).toFixed(1)}M` : `€${Math.round(n / 1000)}K`;
   const pctColor = (v, warnAt = -20) =>
@@ -245,30 +249,51 @@ export default function DealerBriefing() {
   ];
 
   // Full KPI table
-  const abcDesc = { A: 'Top revenue — protect & grow', B: 'Mid-tier — develop & move up', C: 'Low contribution — qualify or churn' };
   const fullKpiTable = [
     {
-      metric: 'Revenue vs Target',
-      actual: fmtAchv(dealer.revenueAchvPct),
+      metric: 'Revenue vs Target Sales',
+      actual: fmtAchvPos(dealer.saleAchvPct),
       target: '100%',
-      note:   dealer.revenueAchvPct == null ? '—'
-            : dealer.revenueAchvPct >= 100   ? 'On or above target'
-            : dealer.revenueAchvPct >= 60    ? 'Below target — monitor'
-            : 'Under target — gap to close',
-      color:  achvColor(dealer.revenueAchvPct),
+      note:   dealer.saleAchvPct == null ? '(Last month)'
+            : dealer.saleAchvPct >= 100  ? 'On or above target (Last month)'
+            : dealer.saleAchvPct >= 60   ? 'Below target — monitor (Last month)'
+            : 'Under target — gap to close (Last month)',
+      color:  achvColor(dealer.saleAchvPct),
+    },
+    {
+      metric: 'MoM Sales Trend',
+      actual: dealer.momSalesGrowth != null ? `${dealer.momSalesGrowth >= 0 ? '+' : ''}${dealer.momSalesGrowth.toFixed(1)}%` : '—',
+      target: 'Positive (≥ 0%)',
+      note:   dealer.momSalesGrowth == null ? 'No trend data'
+            : dealer.momSalesGrowth >= 0    ? 'Positive month-on-month momentum'
+            : dealer.momSalesGrowth >= -5   ? 'Slight month-on-month decline'
+            :                                 'Significant month-on-month decline',
+      color:  dealer.momSalesGrowth == null ? '#606060'
+            : dealer.momSalesGrowth >= 0    ? '#22C55E'
+            : dealer.momSalesGrowth >= -5   ? '#F59E0B' : '#EF4444',
     },
     {
       metric: 'ABC Segment',
       actual: dealer.abcSegment || '—',
       target: '—',
-      note:  '—',
+      note:   '—',
       color:  'var(--text-primary)',
     },
     {
-      metric: 'Revenue YoY Growth',
+      metric: 'Revenue vs Target Purchase',
+      actual: fmtAchvPos(dealer.purchaseAchvPct),
+      target: '100%',
+      note:   dealer.purchaseAchvPct == null ? '(Last month)'
+            : dealer.purchaseAchvPct >= 100  ? 'On or above target (Last month)'
+            : dealer.purchaseAchvPct >= 60   ? 'Below target — monitor (Last month)'
+            : 'Under target — gap to close (Last month)',
+      color:  achvColor(dealer.purchaseAchvPct),
+    },
+    {
+      metric: 'Revenue YoY Comp',
       actual: fmtPct(dealer.yoyGrowth),
       target: 'Positive (≥ 0%)',
-      note:   dealer.yoyGrowth < 0 ? 'Declining — customer churn risk' : 'Growing',
+      note:   dealer.yoyGrowth == null ? '—' : dealer.yoyGrowth < 0 ? 'Declining — revenue at risk' : 'Growing',
       color:  pctColor(dealer.yoyGrowth, -10),
     },
     {
@@ -277,6 +302,17 @@ export default function DealerBriefing() {
       target: 'Positive (≥ 0%)',
       note:   'Aggregated across all part categories',
       color:  pctColor(dealer.partsYoY, 0),
+    },
+    {
+      metric: 'Customer Count MoM',
+      actual: dealer.customerMoM != null ? `${dealer.customerMoM >= 0 ? '+' : ''}${dealer.customerMoM.toFixed(1)}%` : '—',
+      target: 'Stable',
+      note:   dealer.customerMoM == null ? 'No customer trend data'
+            : dealer.customerMoM >= 0    ? 'Stable or growing'
+            : 'Declining',
+      color:  dealer.customerMoM == null ? '#606060'
+            : dealer.customerMoM >= 0    ? '#F59E0B'
+            : '#EF4444',
     },
     {
       metric: 'Active IR Clients',
@@ -306,18 +342,6 @@ export default function DealerBriefing() {
           + new Date().getMonth() - (months[mon] ?? 0);
         return monthsAgo <= 1 ? '#22C55E' : monthsAgo <= 3 ? '#F59E0B' : '#EF4444';
       })(),
-    },
-    {
-      metric: 'MoM Sales Trend',
-      actual: dealer.momSalesGrowth != null ? `${dealer.momSalesGrowth >= 0 ? '+' : ''}${dealer.momSalesGrowth.toFixed(1)}%` : '—',
-      target: 'Positive (≥ 0%)',
-      note:   dealer.momSalesGrowth == null ? 'No trend data'
-            : dealer.momSalesGrowth >= 0    ? 'Positive month-on-month momentum'
-            : dealer.momSalesGrowth >= -5   ? 'Slight month-on-month decline'
-            :                                 'Significant month-on-month decline',
-      color:  dealer.momSalesGrowth == null   ? '#606060'
-            : dealer.momSalesGrowth >= 0      ? '#22C55E'
-            : dealer.momSalesGrowth >= -5     ? '#F59E0B' : '#EF4444',
     },
   ];
 

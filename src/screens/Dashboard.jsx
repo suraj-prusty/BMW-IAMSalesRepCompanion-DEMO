@@ -22,7 +22,7 @@ function DealerCard({ dealer, isPlanned, onPostpone, onPlanToday, isDraggable, c
 
   const kpis = [
     {
-      label: 'Rev vs Target',
+      label: 'Purchase Rev vs Target',
       value: fmt(dealer.revenueVsTarget),
       color: dealer.revenueVsTarget == null ? '#606060'
            : dealer.revenueVsTarget >= 0    ? '#22C55E'
