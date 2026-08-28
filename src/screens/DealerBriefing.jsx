@@ -254,10 +254,9 @@ export default function DealerBriefing() {
       metric: 'Revenue vs Target Sales',
       actual: fmtAchvPos(dealer.saleAchvPct),
       target: '100%',
-      note:   dealer.saleAchvPct == null ? '(Last month)'
-            : dealer.saleAchvPct >= 100  ? 'On or above target (Last month)'
-            : dealer.saleAchvPct >= 60   ? 'Below target — monitor (Last month)'
-            : 'Under target — gap to close (Last month)',
+      note:   dealer.saleAchvPct == null
+            ? '(Last month)'
+            : `${Math.max(0, dealer.saleAchvPct).toFixed(1)}% of target achieved (Last month)`,
       color:  achvColor(dealer.saleAchvPct),
     },
     {
@@ -283,10 +282,9 @@ export default function DealerBriefing() {
       metric: 'Revenue vs Target Purchase',
       actual: fmtAchvPos(dealer.purchaseAchvPct),
       target: '100%',
-      note:   dealer.purchaseAchvPct == null ? '(Last month)'
-            : dealer.purchaseAchvPct >= 100  ? 'On or above target (Last month)'
-            : dealer.purchaseAchvPct >= 60   ? 'Below target — monitor (Last month)'
-            : 'Under target — gap to close (Last month)',
+      note:   dealer.purchaseAchvPct == null
+            ? '(Last month)'
+            : `${Math.max(0, dealer.purchaseAchvPct).toFixed(1)}% of target achieved (Last month)`,
       color:  achvColor(dealer.purchaseAchvPct),
     },
     {
