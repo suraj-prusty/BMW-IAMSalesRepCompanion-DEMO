@@ -59,7 +59,7 @@ function AppLayout() {
                 opacity: 0,
                 // Each image starts 2s after the previous.
                 // Negative delay on i=0 means it skips the initial fade-in and appears immediately.
-                animation: `bgCarousel 12s ${i * 2 - 1}s infinite`,
+                animation: `bgCarousel 120s ${i * 20 - 1}s infinite`,
               }}
             />
           ))}

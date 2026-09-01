@@ -9,9 +9,9 @@
 /* BMW background image crossfade carousel */
 @keyframes bgCarousel {
   0%     { opacity: 0; }
-  8.33%  { opacity: 1; }  /* 1s fade-in  */
-  16.67% { opacity: 1; }  /* 1s hold     */
-  25%    { opacity: 0; }  /* 1s fade-out */
+  1.67%  { opacity: 1; }  /* 2s fade-in  */
+  15%    { opacity: 1; }  /* 16s hold    */
+  16.67% { opacity: 0; }  /* 2s fade-out */
   100%   { opacity: 0; }  /* hidden for rest of cycle */
 }
 

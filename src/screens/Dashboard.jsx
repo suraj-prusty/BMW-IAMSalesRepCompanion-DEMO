@@ -1496,6 +1496,7 @@ export default function Dashboard() {
   const [plannedIds,      setPlannedIds]      = useState([]);
   const [planInitialized, setPlanInitialized] = useState(false);
   const [dragOver,        setDragOver]        = useState(false);
+  const [dealerSearch,    setDealerSearch]    = useState('');
 
   const DEALER_PAGE_SIZE = 50;
   const DEMO_DEALER_CODES = new Set([21125, 11380, 35955, 33400, 40477, 6057, 30864, 9118, 28965, 33160].map(String));
@@ -1520,7 +1521,13 @@ export default function Dashboard() {
   };
   const postponeDealer = (id) => setPlannedIds(prev => prev.filter(p => p !== id));
 
-  const visibleDealers = showAllDealers ? otherDealers : otherDealers.slice(0, DEALER_PAGE_SIZE);
+  const searchedDealers = dealerSearch.trim() === ''
+    ? otherDealers
+    : otherDealers.filter(d =>
+        d.name?.toLowerCase().includes(dealerSearch.toLowerCase()) ||
+        String(d.dealer_code).includes(dealerSearch)
+      );
+  const visibleDealers = showAllDealers ? searchedDealers : searchedDealers.slice(0, DEALER_PAGE_SIZE);
 
   // Derived metrics from real API data
   const belowTarget       = apiDealers.filter(d => d.purchaseAchvPct != null && d.purchaseAchvPct < 60).length;
@@ -1715,11 +1722,47 @@ export default function Dashboard() {
           {/* My Dealerships — draggable when a slot is free */}
           <div>
             <div style={{
-              fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)',
-              letterSpacing: '0.08em', textTransform: 'uppercase',
-              borderLeft: '3px solid #2A2A2A', paddingLeft: '10px', marginBottom: '8px',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              marginBottom: '8px', gap: '12px',
             }}>
-              My Dealerships
+              <div style={{
+                fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)',
+                letterSpacing: '0.08em', textTransform: 'uppercase',
+                borderLeft: '3px solid #2A2A2A', paddingLeft: '10px',
+              }}>
+                My Dealerships
+              </div>
+              <div style={{ position: 'relative', flexShrink: 0 }}>
+                <input
+                  type="text"
+                  placeholder="Search by name or code…"
+                  value={dealerSearch}
+                  onChange={(e) => setDealerSearch(e.target.value)}
+                  style={{
+                    background: 'var(--surface-raised)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '6px',
+                    color: 'var(--text-primary)',
+                    fontSize: '12px',
+                    padding: '6px 28px 6px 10px',
+                    width: '220px',
+                    outline: 'none',
+                    fontFamily: 'inherit',
+                  }}
+                  onFocus={(e) => e.target.style.borderColor = '#A100FF'}
+                  onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
+                />
+                {dealerSearch && (
+                  <button
+                    onClick={() => setDealerSearch('')}
+                    style={{
+                      position: 'absolute', right: '6px', top: '50%', transform: 'translateY(-50%)',
+                      background: 'transparent', border: 'none', cursor: 'pointer',
+                      color: 'var(--text-muted)', fontSize: '14px', lineHeight: 1, padding: 0,
+                    }}
+                  >×</button>
+                )}
+              </div>
             </div>
             <div style={{ fontSize: '11px', color: canPlanMore ? '#A100FF' : '#505050', paddingLeft: '13px', marginBottom: '12px' }}>
               {canPlanMore
@@ -1736,7 +1779,12 @@ export default function Dashboard() {
                   <DealerCard key={d.id} dealer={d} isPlanned={false} isManager={isManager}
                     isDraggable={true} canPlan={canPlanMore} onPlanToday={moveToPlanned} />
                 ))}
-                {otherDealers.length > DEALER_PAGE_SIZE && (
+                {searchedDealers.length === 0 && dealerSearch && (
+                  <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)', fontSize: '13px' }}>
+                    No dealers match "{dealerSearch}"
+                  </div>
+                )}
+                {searchedDealers.length > DEALER_PAGE_SIZE && (
                   <button
                     onClick={() => setShowAllDealers((p) => !p)}
                     style={{
@@ -1748,7 +1796,7 @@ export default function Dashboard() {
                   >
                     {showAllDealers
                       ? `Show first ${DEALER_PAGE_SIZE} only ▲`
-                      : `Show all ${otherDealers.length} dealers ▼`}
+                      : `Show all ${searchedDealers.length} dealers ▼`}
                   </button>
                 )}
               </>

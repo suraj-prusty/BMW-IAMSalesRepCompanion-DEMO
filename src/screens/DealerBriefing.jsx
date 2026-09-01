@@ -188,10 +188,11 @@ export default function DealerBriefing() {
   useEffect(() => {
     api.getInsights(id)
       .then(data => {
-        console.log('[GET /dealers/:code/insights]', data);
+        console.log('[GET /dealers/:code/insights] full response:', data);
+        console.log('[GET /dealers/:code/insights] top_issues:', data?.top_issues, '| summary:', !!data?.summary, '| pitch:', !!data?.pitch);
         setInsightsData(data);
       })
-      .catch(err => console.error('[GET /dealers/:code/insights] error:', err))
+      .catch(err => console.error('[GET /dealers/:code/insights] FAILED:', err))
       .finally(() => setInsightsLoading(false));
   }, [id]);
 
@@ -215,8 +216,22 @@ export default function DealerBriefing() {
 
   // ── Derive dealer + data stub ──────────────────────────────────────────────────
   const dealer = normalizeDealerDetail(dealerData);
-  // Map top_issues from insights (snake_case → camelCase for UI)
-  const mappedIssues = (insightsData?.top_issues || []).map(i => ({
+
+  // Normalise top_issues — guard against DynamoDB native wire format {"L":[{"M":{...}}]}
+  const rawIssues = insightsData?.top_issues;
+  let issuesList = [];
+  if (Array.isArray(rawIssues)) {
+    issuesList = rawIssues;
+  } else if (rawIssues?.L) {
+    // DynamoDB native list: unwrap each {"M": {field: {S|N: val}}}
+    issuesList = rawIssues.L.map(item => {
+      const m = item.M || item;
+      const unwrap = (v) => v?.S ?? v?.N ?? v;
+      return { num: unwrap(m.num), title: unwrap(m.title), root_cause: unwrap(m.root_cause), impact: unwrap(m.impact) };
+    });
+  }
+
+  const mappedIssues = issuesList.map(i => ({
     num:       i.num,
     title:     i.title,
     rootCause: i.root_cause,
