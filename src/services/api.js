@@ -18,6 +18,9 @@ const API_BASE = import.meta.env.VITE_API_URL || "/api";
 // Prod: leave unset — empty string = same origin = Express serves everything
 const AI_BASE  = import.meta.env.VITE_AI_URL  ?? "";
 
+// Typed chat endpoint (Parts & Dealer Transactions) — AWS API Gateway
+const TYPED_CHAT_URL = "https://ey60bpvzuc.execute-api.eu-central-1.amazonaws.com/chat";
+
 // ── Internal: generic fetch wrapper ────────────────────────────────────────
 async function request(endpoint, options = {}) {
   const url = `${API_BASE}${endpoint}`;
@@ -128,6 +131,21 @@ export const api = {
     }
     const data = await response.json();
     return data.reply;
+  },
+
+  // ── AI: Typed chat (Parts & Dealer Transactions / Promotion & Campaign) ───
+  // Sends the full payload directly to the AWS chat endpoint.
+  async chatTyped(payload) {
+    const response = await fetch(TYPED_CHAT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || err.message || `Request failed with status ${response.status}`);
+    }
+    return response.json();
   },
 
   // ── Results: ABC Segmentation ─────────────────────────────────────────────

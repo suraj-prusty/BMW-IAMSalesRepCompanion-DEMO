@@ -1,71 +1,131 @@
 import { useState, useRef, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { MessageCircle, X, Send, Loader2 } from 'lucide-react';
-import { SCREEN_CONTEXT } from '../data/dealers';
-import { RAG_KNOWLEDGE } from '../data/ragKnowledge';
+import { MessageCircle, X, Send, Loader2, Plus } from 'lucide-react';
 import { api } from '../services/api';
 
-const GENERAL_QUESTIONS = [
-  'What is a Health Check and what does it assess?',
-  'How do I run a PL24 coaching session on-site?',
+// Suggested prompts for "Parts and Dealer Transactions" — verified against the
+// current dataset (see CHATBOT_QUERY_TESTS_AND_SUPPORTED_QUERIES.md).
+const PARTS_SUGGESTED_QUESTIONS = [
+  'Show the top 10 part families by sales for dealer 28965 in Poland in 2026',
+  'Show total sales for dealer 28965 in 2026',
+  'Show the top 5 dealer groups by sales in Poland in 2026',
+  'Compare dealer 28965 with the Poland country average in 2026',
+  'Compare sales for dealer 28965 between 2025 and 2026',
+  'Show total sales for Poland in 2026',
 ];
 
-const PRELOADED_QUESTIONS = {
-  '/dashboard': [
-    'Who should I visit first today?',
-    'What are my overdue actions?',
-    'Which dealer needs most attention?',
-    ...GENERAL_QUESTIONS,
-  ],
-  '/dealer': [
-    "What's the biggest risk at this dealer?",
-    'What did we discuss last time?',
-    'What should I focus on today?',
-    ...GENERAL_QUESTIONS,
-  ],
-  '/visit': [
-    'What questions should I ask about PL24?',
-    'How do I address the parts gap?',
-    'Flag an issue not on the list',
-    ...GENERAL_QUESTIONS,
-  ],
-};
-
-function getScreenContext(pathname) {
-  if (pathname.startsWith('/dealer')) return SCREEN_CONTEXT.dealerBriefing;
-  if (pathname.startsWith('/visit')) return SCREEN_CONTEXT.visitCapture;
-  return SCREEN_CONTEXT.dashboard;
+// ── IDs ──────────────────────────────────────────────────────────────────────
+function generateId() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
 }
 
-function getPreloaded(pathname) {
-  if (pathname.startsWith('/dealer')) return PRELOADED_QUESTIONS['/dealer'];
-  if (pathname.startsWith('/visit')) return PRELOADED_QUESTIONS['/visit'];
-  return PRELOADED_QUESTIONS['/dashboard'];
+function getOrCreateSessionId() {
+  const KEY = 'iam-chat-session-id';
+  let id = sessionStorage.getItem(KEY);
+  if (!id) {
+    id = generateId();
+    sessionStorage.setItem(KEY, id);
+  }
+  return id;
 }
 
-function buildSystemPrompt(screenContext) {
-  return `${screenContext}
+// ── Payload helpers ──────────────────────────────────────────────────────────
+function buildUserPayload() {
+  const user = api.getUser();
+  const isManager = user?.isManager === true;
+  return {
+    user_id: user?.email || 'user-123',
+    role: isManager ? 'Manager' : 'Sales Executive',
+    groups: isManager ? ['sales_team', 'europe_region'] : ['sales_team'],
+    permissions: ['view_sales_data'],
+    language: (navigator.language || 'en').slice(0, 2) || 'en',
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Warsaw',
+  };
+}
 
---- BMW IAM PROGRAM KNOWLEDGE BASE (RAG) ---
-You have access to the following BMW IAM program documentation. When answering questions about Health Checks, PL24, AOS, dealer assessments, KPIs, IR customers, training, or the BMW IAM program structure, prioritise the knowledge below over general training data. If the answer is fully contained in this documentation, cite it directly and concisely.
+// ── Response formatting ──────────────────────────────────────────────────────
+function formatReply(data) {
+  const rows = data?.result?.data;
+  if (Array.isArray(rows)) {
+    return { content: '', resultData: rows };
+  }
+  const text = data?.reply || data?.response || data?.answer || data?.message || data?.content;
+  if (typeof text === 'string' && text.trim()) return { content: text };
+  return { content: JSON.stringify(data, null, 2) };
+}
 
-${RAG_KNOWLEDGE}
---- END OF KNOWLEDGE BASE ---`;
+function ResultTable({ data }) {
+  if (!Array.isArray(data) || data.length === 0) {
+    return <span style={{ color: '#A0A0A0', fontSize: '12px' }}>No results found.</span>;
+  }
+  const columns = Object.keys(data[0]);
+  return (
+    <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '11px' }}>
+      <thead>
+        <tr>
+          {columns.map((c) => (
+            <th
+              key={c}
+              style={{
+                borderBottom: '1px solid #2A2A2A',
+                padding: '4px 6px',
+                textAlign: 'left',
+                color: '#A0A0A0',
+                fontWeight: '600',
+                textTransform: 'capitalize',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {c.replace(/_/g, ' ')}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {data.map((row, i) => (
+          <tr key={i} style={{ borderBottom: '1px solid rgba(42,42,42,0.5)' }}>
+            {columns.map((c) => (
+              <td key={c} style={{ padding: '4px 6px', color: '#FFFFFF', whiteSpace: 'nowrap' }}>
+                {row[c] === null || row[c] === undefined ? '—' : String(row[c])}
+              </td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
 }
 
 export default function ChatBot() {
   const { pathname } = useLocation();
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [selectedMode, setSelectedMode] = useState(null); // 'parts' | 'campaign'
+  const [chats, setChats] = useState({ parts: [], campaign: [] });
+  const [conversationIds, setConversationIds] = useState(() => ({
+    parts: generateId(),
+    campaign: generateId(),
+  }));
+  const [resetNext, setResetNext] = useState({ parts: false, campaign: false });
+  const [sessionId] = useState(() => getOrCreateSessionId());
   const prevPathRef = useRef(pathname);
   const messagesEndRef = useRef(null);
+
+  const messages = selectedMode ? chats[selectedMode] : [];
 
   // Reset chat on route change
   useEffect(() => {
     if (prevPathRef.current !== pathname) {
-      setMessages([]);
+      setChats({ parts: [], campaign: [] });
+      setConversationIds({ parts: generateId(), campaign: generateId() });
+      setResetNext({ parts: false, campaign: false });
+      setInput('');
       setIsOpen(false);
       prevPathRef.current = pathname;
     }
@@ -74,37 +134,79 @@ export default function ChatBot() {
   // Auto-scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [chats, selectedMode]);
 
   const sendMessage = async (text) => {
-    if (!text.trim() || isLoading) return;
+    if (!text.trim() || isLoading || !selectedMode) return;
     const userMsg = { role: 'user', content: text };
-    setMessages((prev) => [...prev, userMsg]);
+    setChats((prev) => ({ ...prev, [selectedMode]: [...prev[selectedMode], userMsg] }));
     setInput('');
     setIsLoading(true);
 
     try {
-      const history = [...messages, userMsg];
-      const systemContext = buildSystemPrompt(getScreenContext(pathname));
-      const reply = await api.chat(
-        history.map((m) => ({ role: m.role, content: m.content })),
-        systemContext
-      );
-      setMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
-    } catch (err) {
-      setMessages((prev) => [
+      // Promotion & Campaign — placeholder until endpoint is ready
+      if (selectedMode === 'campaign') {
+        setChats((prev) => ({
+          ...prev,
+          campaign: [
+            ...prev.campaign,
+            {
+              role: 'assistant',
+              content: '🚧 Promotion & Campaign is coming soon — this feature is under development.',
+            },
+          ],
+        }));
+        return;
+      }
+
+      const payload = {
+        user: buildUserPayload(),
+        prompt: text,
+        prompt_type: 'Parts and Dealer Transactions',
+        conversation_id: conversationIds[selectedMode],
+        session_id: sessionId,
+        reset: resetNext[selectedMode],
+      };
+
+      const data = await api.chatTyped(payload);
+      setChats((prev) => ({
         ...prev,
-        {
-          role: 'assistant',
-          content: `⚠️ Unable to reach AI service. Error: ${err.message}. Please check your network connection.`,
-        },
-      ]);
+        [selectedMode]: [...prev[selectedMode], { role: 'assistant', ...formatReply(data) }],
+      }));
+
+      if (resetNext[selectedMode]) {
+        setResetNext((prev) => ({ ...prev, [selectedMode]: false }));
+      }
+    } catch (err) {
+      setChats((prev) => ({
+        ...prev,
+        [selectedMode]: [
+          ...prev[selectedMode],
+          {
+            role: 'assistant',
+            content: `⚠️ Unable to reach AI service. Error: ${err.message}. Please check your network connection.`,
+          },
+        ],
+      }));
     } finally {
       setIsLoading(false);
     }
   };
 
-  const preloaded = getPreloaded(pathname);
+  const startNewChat = () => {
+    if (!selectedMode) return;
+    setChats((prev) => ({ ...prev, [selectedMode]: [] }));
+    setConversationIds((prev) => ({ ...prev, [selectedMode]: generateId() }));
+    setResetNext((prev) => ({ ...prev, [selectedMode]: true }));
+    setInput('');
+  };
+
+  const inputDisabled = !selectedMode || selectedMode === 'campaign';
+  const inputPlaceholder = !selectedMode
+    ? 'Select a topic above to start chatting...'
+    : selectedMode === 'campaign'
+      ? 'Promotion & Campaign coming soon...'
+      : 'Ask anything...';
 
   return (
     <>
@@ -186,21 +288,82 @@ export default function ChatBot() {
                 <div style={{ fontSize: '11px', color: '#22C55E' }}>● Online</div>
               </div>
             </div>
-            <button
-              onClick={() => setIsOpen(false)}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                cursor: 'pointer',
-                color: '#A0A0A0',
-                padding: '4px',
-                borderRadius: '4px',
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = '#1C1C1C')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-            >
-              <X size={16} />
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <button
+                onClick={startNewChat}
+                title="New chat"
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: '#A0A0A0',
+                  padding: '4px',
+                  borderRadius: '4px',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = '#1C1C1C')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              >
+                <Plus size={16} />
+              </button>
+              <button
+                onClick={() => setIsOpen(false)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: '#A0A0A0',
+                  padding: '4px',
+                  borderRadius: '4px',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = '#1C1C1C')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              >
+                <X size={16} />
+              </button>
+            </div>
+          </div>
+
+          {/* Mode selector */}
+          <div
+            style={{
+              padding: '10px 12px',
+              borderBottom: '1px solid #2A2A2A',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px',
+            }}
+          >
+            <div style={{ display: 'flex', gap: '6px' }}>
+              {[
+                { key: 'parts', label: 'Parts and Dealer Transactions' },
+                { key: 'campaign', label: 'Promotion & Campaign' },
+              ].map((m) => (
+                <button
+                  key={m.key}
+                  onClick={() => setSelectedMode(m.key)}
+                  style={{
+                    flex: 1,
+                    padding: '7px 8px',
+                    fontSize: '10.5px',
+                    lineHeight: '1.3',
+                    borderRadius: '8px',
+                    border: selectedMode === m.key ? '1px solid #A100FF' : '1px solid #2A2A2A',
+                    background: selectedMode === m.key ? 'rgba(161,0,255,0.18)' : 'transparent',
+                    color: selectedMode === m.key ? '#FFFFFF' : '#A0A0A0',
+                    cursor: 'pointer',
+                    fontWeight: selectedMode === m.key ? '600' : '400',
+                    transition: 'all 0.2s',
+                  }}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+            {!selectedMode && (
+              <span style={{ fontSize: '10.5px', color: '#A0A0A0' }}>
+                Select a topic to start chatting
+              </span>
+            )}
           </div>
 
           {/* Messages */}
@@ -214,14 +377,31 @@ export default function ChatBot() {
               gap: '10px',
             }}
           >
-            {/* Preloaded question chips (only when no messages) */}
-            {messages.length === 0 && (
+            {/* Promo placeholder note */}
+            {messages.length === 0 && selectedMode === 'campaign' && (
+              <div
+                style={{
+                  background: 'rgba(161,0,255,0.06)',
+                  border: '1px solid rgba(161,0,255,0.25)',
+                  borderRadius: '8px',
+                  padding: '10px 12px',
+                  color: '#A0A0A0',
+                  fontSize: '11.5px',
+                  lineHeight: '1.5',
+                }}
+              >
+                🚧 Promotion {'&'} Campaign is under development — coming soon.
+              </div>
+            )}
+
+            {/* Preloaded question chips (only when no messages and a mode is selected) */}
+            {messages.length === 0 && selectedMode === 'parts' && (
               <div>
                 <p style={{ fontSize: '12px', color: '#A0A0A0', marginBottom: '10px', margin: '0 0 10px 0' }}>
                   Suggested questions:
                 </p>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  {preloaded.map((q) => (
+                  {PARTS_SUGGESTED_QUESTIONS.map((q) => (
                     <button
                       key={q}
                       onClick={() => sendMessage(q)}
@@ -291,7 +471,7 @@ export default function ChatBot() {
                     whiteSpace: 'pre-wrap',
                   }}
                 >
-                  {msg.content}
+                  {msg.resultData ? <ResultTable data={msg.resultData} /> : msg.content}
                 </div>
               </div>
             ))}
@@ -339,20 +519,26 @@ export default function ChatBot() {
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage(input)}
-              placeholder="Ask anything..."
+              onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && !inputDisabled && sendMessage(input)}
+              placeholder={inputPlaceholder}
+              disabled={inputDisabled}
               className="input-field"
-              style={{ flex: 1, padding: '9px 12px', fontSize: '13px' }}
+              style={{
+                flex: 1,
+                padding: '9px 12px',
+                fontSize: '13px',
+                opacity: inputDisabled ? 0.5 : 1,
+              }}
             />
             <button
               onClick={() => sendMessage(input)}
-              disabled={!input.trim() || isLoading}
+              disabled={inputDisabled || !input.trim() || isLoading}
               style={{
-                background: input.trim() && !isLoading ? '#A100FF' : '#2A2A2A',
+                background: !inputDisabled && input.trim() && !isLoading ? '#A100FF' : '#2A2A2A',
                 border: 'none',
                 borderRadius: '6px',
                 padding: '9px 12px',
-                cursor: input.trim() && !isLoading ? 'pointer' : 'default',
+                cursor: !inputDisabled && input.trim() && !isLoading ? 'pointer' : 'default',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -360,7 +546,7 @@ export default function ChatBot() {
                 flexShrink: 0,
               }}
             >
-              <Send size={16} color={input.trim() && !isLoading ? '#fff' : '#A0A0A0'} />
+              <Send size={16} color={!inputDisabled && input.trim() && !isLoading ? '#fff' : '#A0A0A0'} />
             </button>
           </div>
         </div>
