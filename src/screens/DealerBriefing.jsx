@@ -8,6 +8,21 @@ import { api } from '../services/api';
 const BADGE       = { HIGH: 'badge-high', MED: 'badge-med', LOW: 'badge-low' };
 const BADGE_LABEL = { HIGH: 'HIGH PRIORITY', MED: 'MEDIUM PRIORITY', LOW: 'LOW PRIORITY' };
 
+// Normalise pitch to [{issue, data, action}] regardless of whether the API
+// returned a JSON array (old format) or a markdown-numbered string (new format).
+function normalisePitch(raw) {
+  if (!raw) return null;
+  if (Array.isArray(raw)) return raw;
+  const items = [];
+  const re = /\d+\.\s+\*\*([^*]+)\*\*[:\s]+([\s\S]*?)(?=\s*\d+\.\s+\*\*|$)/g;
+  let m;
+  while ((m = re.exec(raw)) !== null) {
+    const body = m[2].trim();
+    if (body) items.push({ issue: m[1].trim(), data: '', action: body });
+  }
+  return items.length > 0 ? items : [{ issue: 'Pitch', data: '', action: raw }];
+}
+
 // ── Dynamic prompt builders ───────────────────────────────────────────────────
 const PITCH_SYSTEM = `You are an expert IAM sales coach. Generate a personalised pre-visit pitch for Marcus Schmidt visiting a dealer today. Return ONLY a valid JSON array — no markdown fences, no explanation, no surrounding text. Each element must have exactly three string fields:
 - "issue": the specific performance topic or opportunity (short label, e.g. "Engagement & Recency Risk")
@@ -397,7 +412,7 @@ export default function DealerBriefing() {
     if (!pitch && insightsData?.pitch) {
       setPitchLoading(true);
       await new Promise((r) => setTimeout(r, 1200));
-      setPitch(insightsData.pitch);
+      setPitch(normalisePitch(insightsData.pitch));
       setPitchLoading(false);
       return;
     }

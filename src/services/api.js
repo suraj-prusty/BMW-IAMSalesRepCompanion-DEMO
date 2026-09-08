@@ -147,4 +147,20 @@ export const api = {
   async getInsights(code) {
     return request(`/dealers/${code}/insights`);
   },
+
+  // ── Visit Forms ───────────────────────────────────────────────────────────
+  async getDraftVisit(dealerCode, formType) {
+    return request(`/visits/${dealerCode}/draft?form_type=${formType}`);
+  },
+
+  async saveVisit(dealerCode, visitId, payload) {
+    return request(`/visits/${dealerCode}/${visitId}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async getVisitByDate(dealerCode, formType, visitDate) {
+    return request(`/visits/${dealerCode}/search?form_type=${formType}&visit_date=${visitDate}`);
+  },
 };

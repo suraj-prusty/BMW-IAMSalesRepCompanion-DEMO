@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
+import { api } from '../services/api';
 
 // ── Input primitives ──────────────────────────────────────────
 
@@ -15,13 +17,22 @@ const baseInput = {
   outline: 'none',
 };
 
-function Inp({ value, onChange, placeholder, type = 'text', style = {} }) {
+function Inp({ value, onChange, placeholder, type = 'text', mode, style = {} }) {
+  const filter = (raw) => {
+    if (mode === 'int')      return raw.replace(/[^0-9]/g, '');
+    if (mode === 'pct')      return raw.replace(/[^0-9.\-]/g, '').replace(/(\..*)\./g, '$1');
+    if (mode === 'currency') return raw.replace(/[^0-9,.£\-\+ ]/g, '');
+    if (mode === 'alpha')    return raw.replace(/[0-9]/g, '');
+    return raw;
+  };
+  const derivedInputMode = mode === 'int' ? 'numeric' : (mode === 'pct' || mode === 'currency') ? 'decimal' : undefined;
   return (
     <input
       type={type}
       value={value}
-      onChange={(e) => onChange(e.target.value)}
+      onChange={(e) => onChange(filter(e.target.value))}
       placeholder={placeholder}
+      inputMode={derivedInputMode}
       style={{ ...baseInput, ...style }}
     />
   );
@@ -194,11 +205,11 @@ const BUYING_HABITS = [
 
 const F_DATA = F_OBJECTIONS.filter((o) => !o.isHeader);
 
-const initCRows = () => C_KPIS.map((kpi) => ({ kpi, target: '', actual: '', variance: '', status: '', comments: '' }));
+const initCRows = () => C_KPIS.map((kpi) => ({ kpi, target: '', actual: '', status: '', comments: '' }));
 const initDRows = () => D_TOOLS.map((t) => ({ tool: t.label, hint: t.hint, status: '', demonstrated: '', notes: '' }));
 const initERows = () => E_METRICS.map((metric) => ({ metric, rating: '', comments: '' }));
 const initFRows = () => F_DATA.map((o) => ({ objection: o.objection, raised: false, response: '', resolved: '', followUp: '' }));
-const initHRows = () => Array.from({ length: 6 }, (_, i) => ({ num: i + 1, action: '', responsible: '', byWhen: '', done: false }));
+const initHRows = () => Array.from({ length: 6 }, (_, i) => ({ num: i + 1, action: '', responsible: '', byWhen: '', done: '' }));
 const initIRows = () => Array.from({ length: 6 }, (_, i) => ({ num: i + 1, part: '', qty: '', unitPrice: '', invoice: '' }));
 
 function rowTotal(qty, price) {
@@ -207,10 +218,16 @@ function rowTotal(qty, price) {
   return (!isNaN(q) && !isNaN(p)) ? (q * p).toFixed(2) : '';
 }
 
+function parseCurrency(v) {
+  const n = parseFloat(String(v || '').replace(/[^0-9.\-]/g, ''));
+  return isNaN(n) ? null : n;
+}
+
 // ── Component ─────────────────────────────────────────────────
 
 export default function IRVisitForm({ dealer }) {
   const d = dealer || { name: '', id: '', city: '' };
+  const { id: routeId } = useParams();
 
   // Section A
   const [a, setA] = useState({
@@ -228,17 +245,22 @@ export default function IRVisitForm({ dealer }) {
     technicians: '', specialistStatus: '',
     bmwPerMonth: '', bmwPct: '',
     partsSuppliers: '',
-    spendThisDealer: '', spendCompetitors: '', spendTotal: '',
+    spendThisDealer: '', spendCompetitors: '',
     motorFactors: '', surveyCompleted: '',
   });
   const ub = (k, v) => setB((p) => ({ ...p, [k]: v }));
+  const spendTotalComputed = (() => {
+    const d = parseCurrency(b.spendThisDealer);
+    const c = parseCurrency(b.spendCompetitors);
+    return (d !== null || c !== null) ? (d || 0) + (c || 0) : null;
+  })();
 
   // Section C
   const [cRows, setCRows] = useState(initCRows());
   const uc = (i, k, v) => setCRows((p) => p.map((r, idx) => idx === i ? { ...r, [k]: v } : r));
   const [gaps, setGaps] = useState({ g1: '', g2: '', g3: '' });
   const [habits, setHabits] = useState({});
-  const [c2, setC2] = useState({ achieved: '', actual: '', target: '', variance: '', keyDriver: '' });
+  const [c2, setC2] = useState({ achieved: '', actual: '', target: '', keyDriver: '' });
   const uc2 = (k, v) => setC2((p) => ({ ...p, [k]: v }));
 
   // Section D
@@ -284,31 +306,227 @@ export default function IRVisitForm({ dealer }) {
   const [j, setJ] = useState({ tprName: '', tprDate: '', formSubmitted: '' });
   const uj = (k, v) => setJ((p) => ({ ...p, [k]: v }));
 
+  // ── Visit persistence ──
+  const [visitId, setVisitId] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState('');
+
+  // ── Load modal ──
+  const [showLoadModal, setShowLoadModal] = useState(false);
+  const [loadDealerCode, setLoadDealerCode] = useState('');
+  const [loadVisitDate, setLoadVisitDate] = useState('');
+  const [isLoadingVisit, setIsLoadingVisit] = useState(false);
+  const [loadError, setLoadError] = useState('');
+
+  // ── Draft load + dealer pre-fill ─────────────────────────────
+  useEffect(() => {
+    if (!routeId) return;
+
+    api.getDealerByCode(routeId)
+      .then((data) => {
+        const abcSeg = (data.kpis || {}).abc_segmentation || {};
+        setA((prev) => ({
+          ...prev,
+          irName:     data.dealer_name || prev.irName,
+          accountNo:  data.dealer_code || routeId,
+          irLocation: abcSeg.country   || prev.irLocation,
+          visitDate:  new Date().toISOString().split('T')[0],
+        }));
+        setVisitId(crypto.randomUUID());
+      })
+      .catch(() => setVisitId(crypto.randomUUID()));
+  }, [routeId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Save / Submit ─────────────────────────────────────────────
+  const buildPayload = (status) => {
+    const kpiRowsWithVariance = cRows.map((r) => {
+      const t = parseCurrency(r.target);
+      const aVal = parseCurrency(r.actual);
+      return { ...r, variance: t !== null && aVal !== null ? (aVal - t).toFixed(2) : '' };
+    });
+    const c2Variance = (() => {
+      const aVal = parseCurrency(c2.actual);
+      const t = parseCurrency(c2.target);
+      return aVal !== null && t !== null ? (aVal - t).toFixed(2) : '';
+    })();
+    return {
+      form_type: 'ir',
+      status,
+      visit_date: a.visitDate,
+      submitted_by: api.getUser()?.email || '',
+      updated_at: new Date().toISOString(),
+      form_data: {
+        visit_identification:  a,
+        ir_business_profile:   { ...b, spendTotal: spendTotalComputed !== null ? spendTotalComputed.toFixed(2) : '' },
+        sales_performance:     { kpi_rows: kpiRowsWithVariance, gaps, habits, month_end_review: { ...c2, variance: c2Variance } },
+        programme_tools:       dRows,
+        dealer_service_quality:{ rows: eRows, concerns: eConcerns },
+        ir_objections:         { rows: fRows, barrier: fBarrier },
+        market_intelligence:   g,
+        actions_agreed:        { rows: hRows, next_visit: h2 },
+        direct_sales_orders:   { rows: iRows, sale_achieved: saleAchieved },
+        sign_off:              j,
+      },
+    };
+  };
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    setSaveStatus('');
+    try {
+      await api.saveVisit(routeId, visitId, buildPayload('draft'));
+      setSaveStatus('saved');
+    } catch {
+      setSaveStatus('error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSubmit = async () => {
+    setIsSaving(true);
+    setSaveStatus('');
+    try {
+      await api.saveVisit(routeId, visitId, buildPayload('submitted'));
+      setSaveStatus('submitted');
+    } catch {
+      setSaveStatus('error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleLoadVisit = async () => {
+    if (!loadDealerCode || !loadVisitDate) return;
+    setIsLoadingVisit(true);
+    setLoadError('');
+    try {
+      const result = await api.getVisitByDate(loadDealerCode, 'ir', loadVisitDate);
+      if (result?.visit) {
+        const fd = result.visit.form_data;
+        setVisitId(result.visit.visit_id);
+        if (fd.visit_identification)   setA(fd.visit_identification);
+        if (fd.ir_business_profile)    setB(fd.ir_business_profile);
+        if (fd.sales_performance)      {
+          setCRows(fd.sales_performance.kpi_rows      || initCRows());
+          setGaps(fd.sales_performance.gaps           || { g1: '', g2: '', g3: '' });
+          setHabits(fd.sales_performance.habits       || {});
+          setC2(fd.sales_performance.month_end_review || { achieved: '', actual: '', target: '', keyDriver: '' });
+        }
+        if (fd.programme_tools)        setDRows(fd.programme_tools);
+        if (fd.dealer_service_quality) { setERows(fd.dealer_service_quality.rows || initERows()); setEConcerns(fd.dealer_service_quality.concerns || ''); }
+        if (fd.ir_objections)          { setFRows(fd.ir_objections.rows || initFRows()); setFBarrier(fd.ir_objections.barrier || ''); }
+        if (fd.market_intelligence)    setG(fd.market_intelligence);
+        if (fd.actions_agreed)         { setHRows(fd.actions_agreed.rows || initHRows()); setH2(fd.actions_agreed.next_visit || {}); }
+        if (fd.direct_sales_orders)    { setIRows(fd.direct_sales_orders.rows || initIRows()); setSaleAchieved(fd.direct_sales_orders.sale_achieved || ''); }
+        if (fd.sign_off)               setJ(fd.sign_off);
+        setShowLoadModal(false);
+      } else {
+        setLoadError('No visit found for that dealer and date.');
+      }
+    } catch {
+      setLoadError('Visit not found — check the details and try again.');
+    } finally {
+      setIsLoadingVisit(false);
+    }
+  };
+
+  const handleNewVisit = () => {
+    if (!window.confirm('Start a new visit? Unsaved entries will be cleared.')) return;
+    setA({ visitType: '', irStatus: '', irName: d.name, accountNo: d.id, visitDate: '', visitTime: '', tprName: '', bdcName: '', irLocation: d.city || '', nearestDealer: '', irCategory: '', contactMet: '', contactRole: '', servicingDealer: '', dealerConflict: '' });
+    setB({ ramps: '', workshopType: '', bwirRegistered: '', technicians: '', specialistStatus: '', bmwPerMonth: '', bmwPct: '', partsSuppliers: '', spendThisDealer: '', spendCompetitors: '', motorFactors: '', surveyCompleted: '' });
+    setCRows(initCRows());
+    setGaps({ g1: '', g2: '', g3: '' });
+    setHabits({});
+    setC2({ achieved: '', actual: '', target: '', keyDriver: '' });
+    setDRows(initDRows());
+    setERows(initERows());
+    setEConcerns('');
+    setFRows(initFRows());
+    setFBarrier('');
+    setG({ competitorOffers: '', otherOEM: '', irObservations: '', nscIntel: '', invoiceCollected: '' });
+    setHRows(initHRows());
+    setH2({ nextDate: '', nextTime: '', obj1: '', obj2: '', obj3: '', freqAdjust: '', freqReason: '', newIRs: '' });
+    setIRows(initIRows());
+    setSaleAchieved('');
+    setJ({ tprName: '', tprDate: '', formSubmitted: '' });
+    setVisitId(crypto.randomUUID());
+    setSaveStatus('');
+  };
+
+  const hasAnyData = (() => {
+    const apiFields = new Set(['irName', 'accountNo', 'irLocation', 'visitDate']);
+    if (Object.entries(a).some(([k, v]) => !apiFields.has(k) && v !== '')) return true;
+    if (Object.values(b).some((v) => v !== '')) return true;
+    if (cRows.some((r) => r.target !== '' || r.actual !== '' || r.status !== '' || r.comments !== '')) return true;
+    if (gaps.g1 !== '' || gaps.g2 !== '' || gaps.g3 !== '') return true;
+    if (Object.keys(habits).some((k) => habits[k])) return true;
+    if (Object.values(c2).some((v) => v !== '')) return true;
+    if (dRows.some((r) => r.status !== '' || r.demonstrated !== '' || r.notes !== '')) return true;
+    if (eRows.some((r) => r.rating !== '' || r.comments !== '')) return true;
+    if (eConcerns !== '') return true;
+    if (fRows.some((r) => r.raised || r.response !== '')) return true;
+    if (fBarrier !== '') return true;
+    if (Object.values(g).some((v) => v !== '')) return true;
+    if (hRows.some((r) => r.action !== '')) return true;
+    if (iRows.some((r) => r.part !== '' || r.qty !== '')) return true;
+    if (saleAchieved !== '') return true;
+    if (Object.values(j).some((v) => v !== '')) return true;
+    return false;
+  })();
+
+  const handleExport = () => {
+    const prev = document.title;
+    document.title = `IR Visit — ${a.accountNo || routeId} — ${a.visitDate || 'Draft'}`;
+    window.print();
+    document.title = prev;
+  };
+
+  const btnBase   = { padding: '8px 20px', borderRadius: '6px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', border: 'none', letterSpacing: '0.04em' };
+  const newBtn    = { ...btnBase, background: 'transparent', color: '#A0A0A0', border: '1px solid #2A2A2A' };
+  const saveBtn   = { ...btnBase, background: '#2A2A2A', color: '#FFFFFF' };
+  const submitBtn = { ...btnBase, background: '#A100FF', color: '#FFFFFF' };
+
+  const ActionBar = () => (
+    <div className="no-print" style={{ display: 'flex', gap: '10px', alignItems: 'center', justifyContent: 'flex-end', padding: '10px 0' }}>
+      {saveStatus === 'saved'     && <span style={{ fontSize: '12px', color: '#22C55E' }}>Draft saved</span>}
+      {saveStatus === 'submitted' && <span style={{ fontSize: '12px', color: '#22C55E' }}>Submitted successfully</span>}
+      {saveStatus === 'error'     && <span style={{ fontSize: '12px', color: '#EF4444' }}>Save failed — try again</span>}
+      <button onClick={() => setShowLoadModal(true)} style={{ ...btnBase, background: '#1C1C1C', color: '#A0A0A0', border: '1px solid #2A2A2A' }}>Load a Saved Visit</button>
+      <button onClick={handleExport} disabled={!hasAnyData} style={{ ...btnBase, background: hasAnyData ? '#1A3A2A' : '#1C1C1C', color: hasAnyData ? '#22C55E' : '#555', border: `1px solid ${hasAnyData ? '#22C55E' : '#2A2A2A'}`, cursor: hasAnyData ? 'pointer' : 'not-allowed' }}>Export this form</button>
+      <button onClick={handleNewVisit} style={newBtn}>Start New Visit</button>
+      <button onClick={handleSave}   disabled={isSaving || !visitId} style={saveBtn}>{isSaving ? 'Saving…' : 'Save Draft'}</button>
+      <button onClick={handleSubmit} disabled={isSaving || !visitId} style={submitBtn}>{isSaving ? 'Saving…' : 'Submit'}</button>
+    </div>
+  );
+
   return (
     <div style={{ fontFamily: 'inherit' }}>
+
+      <ActionBar />
 
       {/* ── A: Visit Identification ── */}
       <Sec letter="A" title="Visit Identification & Context">
         <Grid2>
-          <Fld label="Visit type">
-            <Sel value={a.visitType} onChange={(v) => ua('visitType', v)} options={['Visit 1 — assessment', 'Visit 2 — review', 'Prospect', 'Unscheduled']} />
+          <Fld label="Visit type" span={2}>
+            <Sel value={a.visitType} onChange={(v) => ua('visitType', v)} options={['Visit 1 of 2 — assessment + target setting', 'Visit 2 of 2 — progress review + direct sales', 'Additional / unplanned visit']} />
           </Fld>
-          <Fld label="IR registration status">
-            <Sel value={a.irStatus} onChange={(v) => ua('irStatus', v)} options={['Registered', 'Pending registration', 'Not registered', 'Lapsed']} />
+          <Fld label="IR registration status" span={2}>
+            <Sel value={a.irStatus} onChange={(v) => ua('irStatus', v)} options={['Type 1 — not yet registered (registration visit)', 'Type 2 — registered (ongoing relationship visit)', 'Investigative visit (unknown IR)']} />
           </Fld>
           <Fld label="IR business name"><Inp value={a.irName} onChange={(v) => ua('irName', v)} /></Fld>
           <Fld label="Customer account no."><Inp value={a.accountNo} onChange={(v) => ua('accountNo', v)} /></Fld>
           <Fld label="Visit date"><Inp type="date" value={a.visitDate} onChange={(v) => ua('visitDate', v)} /></Fld>
           <Fld label="Time of visit"><Inp type="time" value={a.visitTime} onChange={(v) => ua('visitTime', v)} /></Fld>
-          <Fld label="Representative (TPR) name"><Inp value={a.tprName} onChange={(v) => ua('tprName', v)} /></Fld>
+          <Fld label="Representative (TPR) name"><Inp value={a.tprName} onChange={(v) => ua('tprName', v)} mode="alpha" /></Fld>
           <Fld label="BDC / Coach name"><Inp value={a.bdcName} onChange={(v) => ua('bdcName', v)} /></Fld>
           <Fld label="IR location / postcode"><Inp value={a.irLocation} onChange={(v) => ua('irLocation', v)} /></Fld>
           <Fld label="Distance from nearest Dealer (km/mi)"><Inp value={a.nearestDealer} onChange={(v) => ua('nearestDealer', v)} /></Fld>
           <Fld label="IR category (from CRM6 prioritisation)" span={2}>
-            <Sel value={a.irCategory} onChange={(v) => ua('irCategory', v)} options={['A — High value', 'B — Growth target', 'C — Maintenance', 'Prospect']} />
+            <Sel value={a.irCategory} onChange={(v) => ua('irCategory', v)} options={['A — highest opportunity (direct TPR engagement)', 'B — medium (Dealer sales rep / telesales)', 'C — low opportunity']} />
           </Fld>
           <Fld label="Contact person met (name & job title)"><Inp value={a.contactMet} onChange={(v) => ua('contactMet', v)} /></Fld>
-          <Fld label="Role"><Inp value={a.contactRole} onChange={(v) => ua('contactRole', v)} /></Fld>
+          <Fld label="Role"><Sel value={a.contactRole} onChange={(v) => ua('contactRole', v)} options={['Decision maker — Owner', 'Decision maker — Manager', 'Decision maker — Parts person / Foreman', 'Influencer — Parts person', 'Influencer — Foreman', 'Influencer — Technician']} /></Fld>
           <Fld label="Servicing Dealer (primary)"><Inp value={a.servicingDealer} onChange={(v) => ua('servicingDealer', v)} /></Fld>
           <Fld label="Conflict with another Dealer?"><YesNo value={a.dealerConflict} onChange={(v) => ua('dealerConflict', v)} /></Fld>
         </Grid2>
@@ -320,49 +538,63 @@ export default function IRVisitForm({ dealer }) {
           <div>
             <SubHeading>Facility</SubHeading>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <Fld label="No. of ramps / work bays"><Inp value={b.ramps} onChange={(v) => ub('ramps', v)} /></Fld>
+              <Fld label="No. of ramps / work bays"><Inp value={b.ramps} onChange={(v) => ub('ramps', v)} mode="int" /></Fld>
               <Fld label="Workshop type">
-                <Sel value={b.workshopType} onChange={(v) => ub('workshopType', v)} options={['Independent general', 'BMW/MINI specialist', 'Bodyshop', 'Fast-fit', 'Mobile / van-based']} />
+                <Sel value={b.workshopType} onChange={(v) => ub('workshopType', v)} options={['Mechanical', 'Bodyshop', 'Both']} />
               </Fld>
-              <Fld label="BwIR registered?"><YesNo value={b.bwirRegistered} onChange={(v) => ub('bwirRegistered', v)} /></Fld>
             </div>
           </div>
           <div>
             <SubHeading>Staffing</SubHeading>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <Fld label="No. of technicians"><Inp value={b.technicians} onChange={(v) => ub('technicians', v)} /></Fld>
-              <Fld label="Specialist status"><Inp value={b.specialistStatus} onChange={(v) => ub('specialistStatus', v)} placeholder="e.g. BMW certified" /></Fld>
+              <Fld label="No. of technicians"><Inp value={b.technicians} onChange={(v) => ub('technicians', v)} mode="int" /></Fld>
+              <Fld label="Specialist status"><Sel value={b.specialistStatus} onChange={(v) => ub('specialistStatus', v)} options={['BMW / MINI', 'Prestige', 'German', 'None']} /></Fld>
             </div>
           </div>
           <div>
             <SubHeading>BMW / MINI Focus</SubHeading>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <Fld label="BMW/MINI vehicles serviced per month"><Inp value={b.bmwPerMonth} onChange={(v) => ub('bmwPerMonth', v)} /></Fld>
-              <Fld label="% of total throughput BMW/MINI"><Inp value={b.bmwPct} onChange={(v) => ub('bmwPct', v)} placeholder="%" /></Fld>
+              <Fld label="BMW/MINI vehicles serviced per month"><Inp value={b.bmwPerMonth} onChange={(v) => ub('bmwPerMonth', v)} mode="int" /></Fld>
+              <Fld label="% of total throughput BMW/MINI"><Inp value={b.bmwPct} onChange={(v) => ub('bmwPct', v)} placeholder="%" mode="pct" /></Fld>
             </div>
           </div>
         </Grid3>
+
+        <Fld label="BwIR registered?" style={{ marginBottom: '14px' }}>
+          <YesNo value={b.bwirRegistered} onChange={(v) => ub('bwirRegistered', v)} />
+        </Fld>
 
         <Fld label="Parts suppliers currently used (motor factors, competitor dealers, direct suppliers — e.g. LKQ, GSF, ECP, Dealer X)">
           <Txt value={b.partsSuppliers} onChange={(v) => ub('partsSuppliers', v)} rows={2} />
         </Fld>
 
-        <PurpleBorder>
-          <div style={{ fontSize: '12px', fontWeight: '600', color: '#FFFFFF', marginBottom: '10px' }}>
-            Monthly BMW/MINI parts spend{' '}
-            <span style={{ color: '#A0A0A0', fontWeight: '400' }}>(including all suppliers)</span>
-          </div>
-          <Grid3>
-            <Fld label="With this Dealer"><Inp value={b.spendThisDealer} onChange={(v) => ub('spendThisDealer', v)} placeholder="£" /></Fld>
-            <Fld label="With competitors"><Inp value={b.spendCompetitors} onChange={(v) => ub('spendCompetitors', v)} placeholder="£" /></Fld>
-            <Fld label="Total estimated"><Inp value={b.spendTotal} onChange={(v) => ub('spendTotal', v)} placeholder="£" /></Fld>
-          </Grid3>
-        </PurpleBorder>
-
-        <Grid2>
-          <Fld label="Number of motor factors used"><Inp value={b.motorFactors} onChange={(v) => ub('motorFactors', v)} /></Fld>
-          <Fld label="IR Expectation Survey (CRM3) completed?"><YesNo value={b.surveyCompleted} onChange={(v) => ub('surveyCompleted', v)} /></Fld>
-        </Grid2>
+        <div style={{ overflowX: 'auto', marginTop: '14px' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+            <thead>
+              <tr>
+                <th style={TH}>Monthly BMW/MINI parts spend</th>
+                <th style={{ ...TH, minWidth: '110px' }}>With this Dealer</th>
+                <th style={{ ...TH, minWidth: '110px' }}>With competitors</th>
+                <th style={{ ...TH, minWidth: '110px' }}>Total estimated</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr style={{ borderBottom: '1px solid #1E1E1E' }}>
+                <td style={{ ...TD, color: '#A0A0A0' }}>Including all suppliers</td>
+                <td style={TD}><Inp value={b.spendThisDealer} onChange={(v) => ub('spendThisDealer', v)} placeholder="£" mode="currency" /></td>
+                <td style={TD}><Inp value={b.spendCompetitors} onChange={(v) => ub('spendCompetitors', v)} placeholder="£" mode="currency" /></td>
+                <td style={{ ...TD, color: spendTotalComputed !== null ? '#FFFFFF' : '#555', fontWeight: spendTotalComputed !== null ? '600' : '400' }}>
+                  {spendTotalComputed !== null ? `£${spendTotalComputed.toFixed(2)}` : '—'}
+                </td>
+              </tr>
+              <tr>
+                <td style={TD}><Fld label="Number of motor factors used"><Sel value={b.motorFactors} onChange={(v) => ub('motorFactors', v)} options={['1 only', '2–3', '4 or more', 'Unknown']} /></Fld></td>
+                <td />
+                <td colSpan={2} style={TD}><Fld label="IR Expectation Survey (CRM3) completed?"><Sel value={b.surveyCompleted} onChange={(v) => ub('surveyCompleted', v)} options={['Yes — this visit', 'Yes — previously', 'No — to be done next visit']} /></Fld></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </Sec>
 
       {/* ── C: Sales Performance ── */}
@@ -380,11 +612,19 @@ export default function IRVisitForm({ dealer }) {
               {cRows.map((r, i) => (
                 <tr key={i} style={{ borderBottom: '1px solid #1E1E1E' }}>
                   <td style={{ ...TD, color: '#A0A0A0', minWidth: '200px', lineHeight: '1.4' }}>{r.kpi}</td>
-                  <td style={{ ...TD, minWidth: '90px' }}><Inp value={r.target} onChange={(v) => uc(i, 'target', v)} /></td>
-                  <td style={{ ...TD, minWidth: '90px' }}><Inp value={r.actual} onChange={(v) => uc(i, 'actual', v)} /></td>
-                  <td style={{ ...TD, minWidth: '90px' }}><Inp value={r.variance} onChange={(v) => uc(i, 'variance', v)} /></td>
+                  <td style={{ ...TD, minWidth: '90px' }}><Inp value={r.target} onChange={(v) => uc(i, 'target', v)} mode="currency" /></td>
+                  <td style={{ ...TD, minWidth: '90px' }}><Inp value={r.actual} onChange={(v) => uc(i, 'actual', v)} mode="currency" /></td>
+                  <td style={{ ...TD, minWidth: '90px' }}>
+                    {(() => {
+                      const t = parseCurrency(r.target);
+                      const aVal = parseCurrency(r.actual);
+                      if (t === null || aVal === null) return <span style={{ color: '#555' }}>—</span>;
+                      const diff = aVal - t;
+                      return <span style={{ color: diff >= 0 ? '#22C55E' : '#EF4444', fontWeight: '600', fontSize: '12px' }}>{diff >= 0 ? '+' : ''}{diff.toFixed(2)}</span>;
+                    })()}
+                  </td>
                   <td style={{ ...TD, minWidth: '100px' }}>
-                    <Sel value={r.status} onChange={(v) => uc(i, 'status', v)} options={['On track', 'At risk', 'Behind', 'Exceeded']} />
+                    <Sel value={r.status} onChange={(v) => uc(i, 'status', v)} options={['On Track', 'At Risk', 'Off Track']} />
                   </td>
                   <td style={{ ...TD, minWidth: '160px' }}><Inp value={r.comments} onChange={(v) => uc(i, 'comments', v)} /></td>
                 </tr>
@@ -427,13 +667,21 @@ export default function IRVisitForm({ dealer }) {
             <span style={{ color: '#A0A0A0', fontWeight: '400' }}>(complete on the second visit of the month)</span>
           </div>
           <Grid2>
-            <Fld label="Were month-end targets achieved?"><YesNo value={c2.achieved} onChange={(v) => uc2('achieved', v)} /></Fld>
+            <Fld label="Were month-end targets achieved?"><Sel value={c2.achieved} onChange={(v) => uc2('achieved', v)} options={['Yes - All Met', 'Partially', 'No', 'N/A']} /></Fld>
             <div />
           </Grid2>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '12px' }}>
-            <Fld label="Final month revenue — Actual"><Inp value={c2.actual} onChange={(v) => uc2('actual', v)} /></Fld>
-            <Fld label="Target"><Inp value={c2.target} onChange={(v) => uc2('target', v)} /></Fld>
-            <Fld label="Variance"><Inp value={c2.variance} onChange={(v) => uc2('variance', v)} /></Fld>
+            <Fld label="Final month revenue — Actual"><Inp value={c2.actual} onChange={(v) => uc2('actual', v)} mode="currency" /></Fld>
+            <Fld label="Target"><Inp value={c2.target} onChange={(v) => uc2('target', v)} mode="currency" /></Fld>
+            <Fld label="Variance">
+              {(() => {
+                const aVal = parseCurrency(c2.actual);
+                const t = parseCurrency(c2.target);
+                if (aVal === null || t === null) return <span style={{ color: '#555', fontSize: '12px' }}>—</span>;
+                const diff = aVal - t;
+                return <span style={{ color: diff >= 0 ? '#22C55E' : '#EF4444', fontWeight: '700', fontSize: '13px' }}>{diff >= 0 ? '+' : ''}{diff.toFixed(2)}</span>;
+              })()}
+            </Fld>
           </div>
           <Fld label="Key driver of performance this month (what changed? new purchases? stopped buying something? competitor price change?)">
             <Txt value={c2.keyDriver} onChange={(v) => uc2('keyDriver', v)} rows={2} />
@@ -448,7 +696,6 @@ export default function IRVisitForm({ dealer }) {
             <thead>
               <tr>
                 <th style={TH}>Tool / Programme</th>
-                <th style={{ ...TH, minWidth: '160px' }}>Hint</th>
                 <th style={{ ...TH, minWidth: '110px' }}>IR status</th>
                 <th style={{ ...TH, minWidth: '110px' }}>Demonstrated today?</th>
                 <th style={TH}>Notes / next action</th>
@@ -458,15 +705,14 @@ export default function IRVisitForm({ dealer }) {
               {dRows.map((r, i) => (
                 <tr key={i} style={{ borderBottom: '1px solid #1E1E1E' }}>
                   <td style={{ ...TD, color: '#A0A0A0', minWidth: '200px' }}>{r.tool}</td>
-                  <td style={{ ...TD, color: '#606060', fontSize: '11px', fontStyle: 'italic', lineHeight: '1.4' }}>{r.hint}</td>
                   <td style={{ ...TD, minWidth: '120px' }}>
-                    <Sel value={r.status} onChange={(v) => ud(i, 'status', v)} options={['Active', 'Inactive', 'Not set up', 'Partial']} />
+                    <Sel value={r.status} onChange={(v) => ud(i, 'status', v)} options={['Yes — this visit', 'Yes — previously', 'No — to be done next visit']} />
                   </td>
                   <td style={TD}>
                     <YesNo value={r.demonstrated} onChange={(v) => ud(i, 'demonstrated', v)} />
                   </td>
-                  <td style={{ ...TD, minWidth: '180px' }}>
-                    <Inp value={r.notes} onChange={(v) => ud(i, 'notes', v)} />
+                  <td style={{ ...TD, minWidth: '220px' }}>
+                    <Inp value={r.notes} onChange={(v) => ud(i, 'notes', v)} placeholder={r.hint} />
                   </td>
                 </tr>
               ))}
@@ -545,7 +791,7 @@ export default function IRVisitForm({ dealer }) {
                     <td style={{ ...TD, color: '#A0A0A0', minWidth: '240px', lineHeight: '1.5' }}>{r.objection}</td>
                     <td style={{ ...TD, textAlign: 'center' }}><Chk checked={r.raised} onChange={(v) => uf(idx, 'raised', v)} /></td>
                     <td style={{ ...TD, minWidth: '180px' }}><Inp value={r.response} onChange={(v) => uf(idx, 'response', v)} /></td>
-                    <td style={TD}><YesNo value={r.resolved} onChange={(v) => uf(idx, 'resolved', v)} /></td>
+                    <td style={TD}><Sel value={r.resolved} onChange={(v) => uf(idx, 'resolved', v)} options={['Yes', 'No', 'Pending']} /></td>
                     <td style={{ ...TD, minWidth: '160px' }}><Inp value={r.followUp} onChange={(v) => uf(idx, 'followUp', v)} /></td>
                   </tr>
                 );
@@ -599,9 +845,9 @@ export default function IRVisitForm({ dealer }) {
                 <tr key={i} style={{ borderBottom: '1px solid #1E1E1E' }}>
                   <td style={{ ...TD, color: '#A0A0A0', fontWeight: '700' }}>{r.num}</td>
                   <td style={{ ...TD, minWidth: '260px' }}><Inp value={r.action} onChange={(v) => uh(i, 'action', v)} /></td>
-                  <td style={TD}><Inp value={r.responsible} onChange={(v) => uh(i, 'responsible', v)} /></td>
+                  <td style={TD}><Sel value={r.responsible} onChange={(v) => uh(i, 'responsible', v)} options={['TPR', 'BDC', 'Dealer', 'IR']} /></td>
                   <td style={TD}><Inp type="date" value={r.byWhen} onChange={(v) => uh(i, 'byWhen', v)} /></td>
-                  <td style={{ ...TD, textAlign: 'center' }}><Chk checked={r.done} onChange={(v) => uh(i, 'done', v)} /></td>
+                  <td style={TD}><Sel value={r.done} onChange={(v) => uh(i, 'done', v)} options={['Yes', 'No']} /></td>
                 </tr>
               ))}
             </tbody>
@@ -618,11 +864,11 @@ export default function IRVisitForm({ dealer }) {
           <Fld label="Next visit objective 3"><Inp value={h2.obj3} onChange={(v) => uh2('obj3', v)} /></Fld>
         </div>
         <Grid2>
-          <Fld label="Visit frequency adjustment?"><YesNo value={h2.freqAdjust} onChange={(v) => uh2('freqAdjust', v)} /></Fld>
+          <Fld label="Visit frequency adjustment?"><Sel value={h2.freqAdjust} onChange={(v) => uh2('freqAdjust', v)} options={['No change', 'Increase', 'Decrease']} /></Fld>
           <Fld label="Reason for frequency change (if applicable)"><Inp value={h2.freqReason} onChange={(v) => uh2('freqReason', v)} /></Fld>
         </Grid2>
         <Fld label="New IRs identified in the area? (10–20% of TPR time should be prospecting)">
-          <Txt value={h2.newIRs} onChange={(v) => uh2('newIRs', v)} rows={2} />
+          <Sel value={h2.newIRs} onChange={(v) => uh2('newIRs', v)} options={['Yes — added to CRM6 for follow-up', 'No new IRs identified']} />
         </Fld>
       </Sec>
 
@@ -647,8 +893,8 @@ export default function IRVisitForm({ dealer }) {
                   <tr key={i} style={{ borderBottom: '1px solid #1E1E1E' }}>
                     <td style={{ ...TD, color: '#A0A0A0', fontWeight: '700' }}>{r.num}</td>
                     <td style={{ ...TD, minWidth: '220px' }}><Inp value={r.part} onChange={(v) => ui(i, 'part', v)} /></td>
-                    <td style={TD}><Inp value={r.qty} onChange={(v) => ui(i, 'qty', v)} style={{ width: '60px' }} /></td>
-                    <td style={TD}><Inp value={r.unitPrice} onChange={(v) => ui(i, 'unitPrice', v)} placeholder="£" /></td>
+                    <td style={TD}><Inp value={r.qty} onChange={(v) => ui(i, 'qty', v)} mode="int" style={{ width: '60px' }} /></td>
+                    <td style={TD}><Inp value={r.unitPrice} onChange={(v) => ui(i, 'unitPrice', v)} placeholder="£" mode="currency" /></td>
                     <td style={{ ...TD, color: total ? '#FFFFFF' : '#555', fontWeight: total ? '600' : '400' }}>
                       {total ? `£${total}` : '—'}
                     </td>
@@ -669,14 +915,14 @@ export default function IRVisitForm({ dealer }) {
           </table>
         </div>
         <Fld label="Was a sale achieved this visit?">
-          <YesNo value={saleAchieved} onChange={setSaleAchieved} />
+          <Sel value={saleAchieved} onChange={setSaleAchieved} options={['Yes — order placed', 'Not today — follow up next visit', 'IR not in a position to order']} />
         </Fld>
       </Sec>
 
       {/* ── J: Sign-Off ── */}
       <Sec letter="J" title="Sign-Off & Declaration">
         <Grid2>
-          <Fld label="Trade Parts Representative (name)"><Inp value={j.tprName} onChange={(v) => uj('tprName', v)} /></Fld>
+          <Fld label="Trade Parts Representative (name)"><Inp value={j.tprName} onChange={(v) => uj('tprName', v)} mode="alpha" /></Fld>
           <Fld label="Date"><Inp type="date" value={j.tprDate} onChange={(v) => uj('tprDate', v)} /></Fld>
           <Fld label="Form submitted to Dealer / BDC?" span={2}>
             <YesNo value={j.formSubmitted} onChange={(v) => uj('formSubmitted', v)} />
@@ -686,6 +932,49 @@ export default function IRVisitForm({ dealer }) {
           CONFIDENTIAL — for authorised BwIR field representatives only. &nbsp; BMW &amp; MINI · BwIR Independent Repairer Visit Form v3.0
         </div>
       </Sec>
+
+      <ActionBar />
+
+      {/* ── Load a Saved Visit modal ── */}
+      {showLoadModal && (
+        <div className="modal-overlay" onClick={() => setShowLoadModal(false)}>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '10px', padding: '28px 32px', width: '360px', display: 'flex', flexDirection: 'column', gap: '16px' }}
+          >
+            <h3 style={{ margin: 0, fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)' }}>Load a Saved Visit</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label style={{ fontSize: '11px', fontWeight: '600', letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-secondary)' }}>Account No. / Dealer Code</label>
+              <input
+                className="input-field"
+                value={loadDealerCode}
+                onChange={(e) => setLoadDealerCode(e.target.value)}
+                placeholder={routeId || 'e.g. IR001'}
+              />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label style={{ fontSize: '11px', fontWeight: '600', letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-secondary)' }}>Visit Date</label>
+              <input
+                type="date"
+                className="input-field"
+                value={loadVisitDate}
+                onChange={(e) => setLoadVisitDate(e.target.value)}
+              />
+            </div>
+            {loadError && <p style={{ margin: 0, fontSize: '12px', color: '#EF4444' }}>{loadError}</p>}
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button onClick={() => { setShowLoadModal(false); setLoadError(''); }} style={{ ...btnBase, background: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>Cancel</button>
+              <button
+                onClick={handleLoadVisit}
+                disabled={isLoadingVisit || !loadDealerCode || !loadVisitDate}
+                style={{ ...btnBase, background: '#A100FF', color: '#fff', opacity: (isLoadingVisit || !loadDealerCode || !loadVisitDate) ? 0.5 : 1, cursor: (isLoadingVisit || !loadDealerCode || !loadVisitDate) ? 'not-allowed' : 'pointer' }}
+              >
+                {isLoadingVisit ? 'Loading…' : 'Load Visit'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -6,7 +6,7 @@ import { dataService } from '../data/dataService';
 import { dealers } from '../data/dealers';
 import { getCurrentTime } from '../utils/dateUtils';
 import { api } from '../services/api';
-import BwIRVisitForm from './BwIRVisitForm';
+import DealerVisitForm from './DealerVisitForm';
 import IRVisitForm from './IRVisitForm';
 
 // ── Chip multi-select ───────────────────────────────────────
@@ -278,6 +278,7 @@ export default function VisitCapture() {
   ];
 
   const [formType, setFormType] = useState('dealer');
+  const [apiDealerName, setApiDealerName] = useState('');
 
   return (
     <div style={{ minHeight: '100vh', background: '#0A0A0A', padding: '20px 24px 60px' }}>
@@ -290,7 +291,7 @@ export default function VisitCapture() {
               BMW &amp; MINI · BwIR Visit Form v3.0
             </div>
             <h1 style={{ margin: 0, fontSize: '20px', fontWeight: '700', color: '#FFFFFF' }}>
-              Visit Capture — {dealer.name}
+              Visit Capture — {apiDealerName || dealer.name}
             </h1>
             <p style={{ margin: '3px 0 0', fontSize: '13px', color: '#A0A0A0' }}>
               On-site · {getCurrentTime()} ·{' '}
@@ -328,7 +329,7 @@ export default function VisitCapture() {
 
       {/* Form body */}
       {formType === 'dealer'
-        ? <BwIRVisitForm dealer={dealer} />
+        ? <DealerVisitForm onDealerNameLoaded={setApiDealerName} />
         : <IRVisitForm dealer={dealer} />
       }
     </div>

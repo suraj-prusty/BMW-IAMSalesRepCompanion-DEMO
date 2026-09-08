@@ -1735,7 +1735,7 @@ export default function Dashboard() {
               <div style={{ position: 'relative', flexShrink: 0 }}>
                 <input
                   type="text"
-                  placeholder="Search by name or code…"
+                  placeholder="Search by dealer name or code…"
                   value={dealerSearch}
                   onChange={(e) => setDealerSearch(e.target.value)}
                   style={{
