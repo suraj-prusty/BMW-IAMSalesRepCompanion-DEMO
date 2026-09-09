@@ -64,6 +64,25 @@ function buildSummaryPrompt(dealer, data) {
   return `Generate a pre-visit intelligence summary for ${dealer.name}.\n\nDealer: ${dealer.name}, ${dealer.location}\nPriority: ${dealer.priority} | Last visit: ${lv?.date || 'recent'} (${dealer.lastVisit})\nAttendees: ${lv?.attendees || ''}\n\nKPIs:\n${buildKpiLines(dealer)}\n\nOpen actions:\n${actionLines}\n\nTop issues:\n${issueLines}\n\nLast visit notes (high level — summarise, do not list verbatim):\n${visitNoteLines}`;
 }
 
+// ── Month detector: find best available month (M3 > M2 > M1) ──────────────────
+// M1 = May, M2 = June, M3 = July
+// Returns { month: 'M3'|'M2'|'M1'|null, monthName: 'July'|'June'|'May'|null, data: {...} or null }
+function findBestMonth(purchaseRvt, saleRvt) {
+  const months = ['M3', 'M2', 'M1'];
+  const monthNames = { M1: 'May', M2: 'June', M3: 'July' };
+
+  for (const m of months) {
+    const pHasData = purchaseRvt?.[`${m}_AchvPct`] != null || purchaseRvt?.[`${m}_Target`] != null;
+    const sHasData = saleRvt?.[`${m}_AchvPct`] != null || saleRvt?.[`${m}_Target`] != null;
+
+    if (pHasData || sHasData) {
+      return { month: m, monthName: monthNames[m], purchaseRvt, saleRvt };
+    }
+  }
+
+  return { month: null, monthName: null, purchaseRvt: null, saleRvt: null };
+}
+
 // ── Normalize raw API response to dealer detail shape ─────────────────────────
 function normalizeDealerDetail(raw) {
   const kpis        = raw.kpis || {};
@@ -76,49 +95,70 @@ function normalizeDealerDetail(raw) {
   const momDecline  = kpis.mom_decline                || {};
   const custTrend   = kpis.customer_trend             || {};
 
-  // Pick primary RVT source: explicit purchase > explicit sale > legacy
-  const hasPurchaseData = purchaseRvt.M2_AchvPct != null || purchaseRvt.M2_Target != null;
-  const hasSaleData     = saleRvt.M2_AchvPct != null     || saleRvt.M2_Target != null;
-  const rvt             = hasPurchaseData ? purchaseRvt : hasSaleData ? saleRvt : legacyRvt;
+  // Find best available month: M3 > M2 > M1
+  const { month, monthName, purchaseRvt: pRvt, saleRvt: sRvt } = findBestMonth(purchaseRvt, saleRvt);
 
-  // revenueVsTarget
+  // Pick primary RVT source: explicit purchase > explicit sale > legacy
+  const hasPurchaseData = pRvt?.[`${month}_AchvPct`] != null || pRvt?.[`${month}_Target`] != null;
+  const hasSaleData     = sRvt?.[`${month}_AchvPct`] != null || sRvt?.[`${month}_Target`] != null;
+  const rvt             = hasPurchaseData ? pRvt : hasSaleData ? sRvt : legacyRvt;
+
+  // revenueVsTarget (using dynamic month)
   let revenueVsTarget = null;
-  if (rvt.M2_AchvPct != null) {
-    revenueVsTarget = rvt.M2_AchvPct - 100;
-  } else if (rvt.M2_Actual != null && rvt.M2_Target != null && rvt.M2_Target !== 0) {
-    revenueVsTarget = (rvt.M2_Actual / rvt.M2_Target - 1) * 100;
+  const mKey = month ? `${month}_AchvPct` : `M2_AchvPct`;
+  const mActualKey = month ? `${month}_Actual` : `M2_Actual`;
+  const mTargetKey = month ? `${month}_Target` : `M2_Target`;
+
+  if (rvt?.[mKey] != null) {
+    revenueVsTarget = rvt[mKey] - 100;
+  } else if (rvt?.[mActualKey] != null && rvt?.[mTargetKey] != null && rvt[mTargetKey] !== 0) {
+    revenueVsTarget = (rvt[mActualKey] / rvt[mTargetKey] - 1) * 100;
   }
 
   // yoyGrowth
   let yoyGrowth = null;
+  let cyRevenue = null;
+  let lyRevenue = null;
   if (ryoy.cy_revenue_eur > 0 && ryoy.ly_revenue_eur > 0) {
     yoyGrowth = (ryoy.cy_revenue_eur / ryoy.ly_revenue_eur - 1) * 100;
+    cyRevenue = ryoy.cy_revenue_eur;
+    lyRevenue = ryoy.ly_revenue_eur;
   }
 
   // partsYoY — average all numeric values in yoy_comparison
   let partsYoY = null;
+  let partsCyRevenue = null;
+  let partsLyRevenue = null;
   const yoyVals = Object.values(yoyComp).map((v) => parseFloat(v)).filter((v) => !isNaN(v));
   if (yoyVals.length > 0) {
     partsYoY = yoyVals.reduce((s, v) => s + v, 0) / yoyVals.length;
+    // Try to extract CY and LY revenue from yoyComp if available
+    partsCyRevenue = yoyComp.cy_parts_revenue != null ? parseFloat(yoyComp.cy_parts_revenue) : null;
+    partsLyRevenue = yoyComp.ly_parts_revenue != null ? parseFloat(yoyComp.ly_parts_revenue) : null;
   }
 
   // momSalesGrowth: "None" → 0; comma-separated numbers → average (negative = decline)
   let momSalesGrowth = null;
+  let momDeclineTag = null;
   const momStr = momDecline.categories_with_decline_pct;
   if (momStr) {
     if (momStr === 'None') {
       momSalesGrowth = 0;
+      momDeclineTag = 'Stable';
     } else {
       const nums = momStr.split(',').map((v) => parseFloat(v.trim())).filter((v) => !isNaN(v));
       if (nums.length > 0) {
         momSalesGrowth = nums.reduce((s, v) => s + v, 0) / nums.length;
       }
+      momDeclineTag = 'Declining';
     }
   }
 
   // activeClientsIrs + customerMoM from "apr, may, jun" customer counts
   let activeClientsIrs = null;
   let customerMoM      = null;
+  let cyCustomerCount  = null;
+  let lyCustomerCount  = null;
   const cStr = custTrend.customer_count_apr_may_jun;
   if (cStr) {
     const nums = cStr.split(',').map((v) => parseInt(v.trim(), 10)).filter((v) => !isNaN(v));
@@ -127,6 +167,8 @@ function normalizeDealerDetail(raw) {
     if (nums.length >= 2) {
       const prev = nums[nums.length - 2];
       const curr = nums[nums.length - 1];
+      cyCustomerCount = curr;
+      lyCustomerCount = prev;
       customerMoM = prev !== 0
         ? Math.round((curr - prev) / prev * 100 * 10) / 10
         : curr > 0 ? 100 : null;
@@ -137,23 +179,43 @@ function normalizeDealerDetail(raw) {
   const priority   = abcSegment === 'A' ? 'LOW' : abcSegment === 'B' ? 'MED' : 'HIGH';
   const lastVisit  = raw.run_date ? `Data: ${raw.run_date.slice(0, 10)}` : '—';
 
+  // Compute achievement % if AchvPct is missing but Actual/Target are available
+  const computeAchvPct = (data) => {
+    if (data?.[mKey] != null) return data[mKey];
+    if (data?.[mActualKey] != null && data?.[mTargetKey] != null && data[mTargetKey] !== 0) {
+      return (data[mActualKey] / data[mTargetKey]) * 100;
+    }
+    return null;
+  };
+
   return {
     id:               raw.dealer_code,
     dealer_code:      raw.dealer_code,
     name:             raw.dealer_name,
     location:         abc.country || '—',
     abcSegment,
-    revenueAchvPct:   rvt.M2_AchvPct        ?? null,
-    saleAchvPct:      saleRvt.M2_AchvPct    ?? null,
-    purchaseAchvPct:  purchaseRvt.M2_AchvPct ?? null,
+    revenueAchvPct:   computeAchvPct(rvt),
+    saleAchvPct:      computeAchvPct(sRvt),
+    purchaseAchvPct:  computeAchvPct(pRvt),
     revenueVsTarget,
-    revenueTarget:    rvt.M2_Target  ?? null,
-    revenueActual:    rvt.M2_Actual  ?? null,
+    revenueTarget:    rvt?.[mTargetKey]     ?? null,
+    revenueActual:    rvt?.[mActualKey]     ?? null,
+    saleActual:       sRvt?.[mActualKey]    ?? null,
+    saleTarget:       sRvt?.[mTargetKey]    ?? null,
+    purchaseActual:   pRvt?.[mActualKey]    ?? null,
+    purchaseTarget:   pRvt?.[mTargetKey]    ?? null,
     yoyGrowth,
+    cyRevenue,
+    lyRevenue,
     partsYoY,
+    partsCyRevenue,
+    partsLyRevenue,
     momSalesGrowth,
+    momDeclineTag,
     activeClientsIrs,
     customerMoM,
+    cyCustomerCount,
+    lyCustomerCount,
     openActionsCount: null,
     lastPurchaseMonth: null,
     priority,
@@ -161,6 +223,8 @@ function normalizeDealerDetail(raw) {
     lastVisitDate:    null,
     visitTime:        null,
     dormancyScore:    null,
+    dataMonth:        month,
+    dataMonthName:    monthName,
   };
 }
 
@@ -282,11 +346,11 @@ export default function DealerBriefing() {
   const fullKpiTable = [
     {
       metric: 'Revenue vs Target Sales',
-      actual: fmtAchvPos(dealer.saleAchvPct),
-      target: '100%',
+      actual: dealer.saleActual != null ? fmtEur(dealer.saleActual) : '—',
+      target: dealer.saleTarget != null ? fmtEur(dealer.saleTarget) : '—',
       note:   dealer.saleAchvPct == null
-            ? '(Last month)'
-            : `${Math.max(0, dealer.saleAchvPct).toFixed(1)}% of target achieved (Last month)`,
+            ? `(${dealer.dataMonthName || 'Last month'})`
+            : `${Math.max(0, dealer.saleAchvPct).toFixed(1)}% of target achieved (${dealer.dataMonthName || 'Last month'})`,
       color:  achvColor(dealer.saleAchvPct),
     },
     {
@@ -305,57 +369,57 @@ export default function DealerBriefing() {
       metric: 'ABC Segment',
       actual: dealer.abcSegment || '—',
       target: '—',
-      note:   '—',
+      note:   dealer.revenueActual != null ? `YTD revenue is ${fmtEur(dealer.revenueActual)}` : '—',
       color:  'var(--text-primary)',
     },
     {
       metric: 'Revenue vs Target Purchase',
-      actual: fmtAchvPos(dealer.purchaseAchvPct),
-      target: '100%',
+      actual: dealer.purchaseActual != null ? fmtEur(dealer.purchaseActual) : '—',
+      target: dealer.purchaseTarget != null ? fmtEur(dealer.purchaseTarget) : '—',
       note:   dealer.purchaseAchvPct == null
-            ? '(Last month)'
-            : `${Math.max(0, dealer.purchaseAchvPct).toFixed(1)}% of target achieved (Last month)`,
+            ? `(${dealer.dataMonthName || 'Last month'})`
+            : `${Math.max(0, dealer.purchaseAchvPct).toFixed(1)}% of target achieved (${dealer.dataMonthName || 'Last month'})`,
       color:  achvColor(dealer.purchaseAchvPct),
     },
     {
       metric: 'Revenue YoY Comp',
       actual: fmtPct(dealer.yoyGrowth),
       target: 'Positive (≥ 0%)',
-      note:   dealer.yoyGrowth == null ? '—' : dealer.yoyGrowth < 0 ? 'Declining — revenue at risk' : 'Growing',
+      note:   dealer.cyRevenue != null && dealer.lyRevenue != null
+            ? `CY revenue ${fmtEur(dealer.cyRevenue)}, LY revenue ${fmtEur(dealer.lyRevenue)}, ${Math.abs(dealer.yoyGrowth).toFixed(1)}% ${dealer.yoyGrowth >= 0 ? 'growth' : 'decline'}`
+            : '—',
       color:  pctColor(dealer.yoyGrowth, -10),
     },
     {
       metric: 'Parts Purchase YoY',
       actual: fmtPct(dealer.partsYoY),
       target: 'Positive (≥ 0%)',
-      note:   'Aggregated across all part categories',
+      note:   dealer.partsCyRevenue != null && dealer.partsLyRevenue != null
+            ? `CY revenue ${fmtEur(dealer.partsCyRevenue)}, LY revenue ${fmtEur(dealer.partsLyRevenue)}, ${Math.abs(dealer.partsYoY).toFixed(1)}% ${dealer.partsYoY >= 0 ? 'growth' : 'decline'}`
+            : 'No parts data available',
       color:  pctColor(dealer.partsYoY, 0),
     },
     {
       metric: 'Customer Count MoM',
-      actual: dealer.customerMoM != null ? `${dealer.customerMoM >= 0 ? '+' : ''}${dealer.customerMoM.toFixed(1)}%` : '—',
-      target: 'Stable',
-      note:   dealer.customerMoM == null ? 'No customer trend data'
-            : dealer.customerMoM >= 0    ? 'Stable or growing'
-            : 'Declining',
-      color:  dealer.customerMoM == null ? '#606060'
-            : dealer.customerMoM >= 0    ? '#F59E0B'
-            : '#EF4444',
+      actual: '—',
+      target: '—',
+      note:   dealer.momDeclineTag || 'No data',
+      color:  dealer.momDeclineTag === 'Declining' ? '#EF4444' : dealer.momDeclineTag === 'Stable' ? '#F59E0B' : '#606060',
     },
     {
       metric: 'Active IR Clients',
       actual: dealer.activeClientsIrs != null ? String(dealer.activeClientsIrs) : '—',
-      target: '≥ 50 active',
-      note:   'IR accounts currently active',
+      target: '—',
+      note:   dealer.activeClientsIrs != null ? `${dealer.activeClientsIrs} distinct customers` : 'No customer data',
       color:  dealer.activeClientsIrs == null ? '#606060'
             : dealer.activeClientsIrs >= 50   ? '#22C55E' : '#F59E0B',
     },
     {
       metric: 'Open Actions',
-      actual: dealer.openActionsCount != null ? String(dealer.openActionsCount) : '—',
+      actual: '—',
       target: '—',
-      note:   '—',
-      color:  dealer.openActionsCount > 5 ? '#EF4444' : dealer.openActionsCount > 2 ? '#F59E0B' : '#22C55E',
+      note:   'No open actions as of now',
+      color:  '#606060',
     },
     {
       metric: 'Last Purchase Month',
