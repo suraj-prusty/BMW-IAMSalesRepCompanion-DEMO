@@ -9,12 +9,13 @@ const baseInput = {
   border: '1px solid #2A2A2A',
   borderRadius: '6px',
   color: '#FFFFFF',
-  fontSize: '12px',
-  padding: '7px 10px',
+  fontSize: window.innerWidth < 640 ? '14px' : '12px',
+  padding: window.innerWidth < 640 ? '10px 12px' : '7px 10px',
   fontFamily: 'inherit',
   width: '100%',
   boxSizing: 'border-box',
   outline: 'none',
+  minHeight: '44px',
 };
 
 function Inp({ value, onChange, placeholder, type = 'text', mode, style = {} }) {
@@ -83,12 +84,13 @@ function Chk({ checked, onChange }) {
 // ── Layout helpers ────────────────────────────────────────────
 
 function Sec({ letter, title, subtitle, children }) {
+  const isMobile = window.innerWidth < 640;
   return (
-    <div className="card" style={{ marginBottom: '16px' }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', marginBottom: '18px', borderBottom: '1px solid #1E1E1E', paddingBottom: '12px' }}>
-        <span style={{ fontSize: '16px', fontWeight: '700', color: '#A100FF' }}>{letter}.</span>
-        <span style={{ fontSize: '13px', fontWeight: '700', color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{title}</span>
-        {subtitle && <span style={{ fontSize: '11px', color: '#A0A0A0', textTransform: 'none', letterSpacing: 0 }}>{subtitle}</span>}
+    <div className="card" style={{ marginBottom: isMobile ? '12px' : '16px' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: isMobile ? '6px' : '10px', marginBottom: isMobile ? '12px' : '18px', borderBottom: '1px solid #1E1E1E', paddingBottom: isMobile ? '8px' : '12px', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: isMobile ? '14px' : '16px', fontWeight: '700', color: '#A100FF' }}>{letter}.</span>
+        <span style={{ fontSize: isMobile ? '12px' : '13px', fontWeight: '700', color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{title}</span>
+        {subtitle && <span style={{ fontSize: '10px', color: '#A0A0A0', textTransform: 'none', letterSpacing: 0 }}>{subtitle}</span>}
       </div>
       {children}
     </div>
@@ -96,16 +98,19 @@ function Sec({ letter, title, subtitle, children }) {
 }
 
 function Grid2({ children, style = {} }) {
+  const isMobile = window.innerWidth < 640;
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 20px', marginBottom: '12px', ...style }}>
+    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: isMobile ? '10px' : '12px 20px', marginBottom: '12px', ...style }}>
       {children}
     </div>
   );
 }
 
 function Grid3({ children, style = {} }) {
+  const isMobile = window.innerWidth < 640;
+  const isTablet = window.innerWidth < 1024;
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px 24px', marginBottom: '12px', ...style }}>
+    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : isTablet ? '1fr 1fr' : '1fr 1fr 1fr', gap: isMobile ? '10px' : isTablet ? '12px 16px' : '16px 24px', marginBottom: '12px', ...style }}>
       {children}
     </div>
   );
@@ -113,13 +118,15 @@ function Grid3({ children, style = {} }) {
 
 function Fld({ label, children, span }) {
   return (
-    <div style={span ? { gridColumn: `span ${span}` } : {}}>
+    <div style={span ? { gridColumn: `span ${span}`, display: 'flex', flexDirection: 'column' } : { display: 'flex', flexDirection: 'column' }}>
       {label && (
-        <div style={{ fontSize: '11px', color: '#A0A0A0', marginBottom: '5px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+        <div style={{ fontSize: '11px', color: '#A0A0A0', marginBottom: '5px', textTransform: 'uppercase', letterSpacing: '0.04em', minHeight: '16px' }}>
           {label}
         </div>
       )}
-      {children}
+      <div style={{ display: 'flex', flex: 1 }}>
+        {children}
+      </div>
     </div>
   );
 }
@@ -482,23 +489,28 @@ export default function IRVisitForm({ dealer }) {
     document.title = prev;
   };
 
-  const btnBase   = { padding: '8px 20px', borderRadius: '6px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', border: 'none', letterSpacing: '0.04em' };
+  const btnBase   = { borderRadius: '6px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', border: 'none', letterSpacing: '0.04em', minHeight: '44px', padding: window.innerWidth < 640 ? '10px 12px' : '8px 20px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', whiteSpace: 'nowrap' };
   const newBtn    = { ...btnBase, background: 'transparent', color: '#A0A0A0', border: '1px solid #2A2A2A' };
   const saveBtn   = { ...btnBase, background: '#2A2A2A', color: '#FFFFFF' };
   const submitBtn = { ...btnBase, background: '#A100FF', color: '#FFFFFF' };
 
-  const ActionBar = () => (
-    <div className="no-print" style={{ display: 'flex', gap: '10px', alignItems: 'center', justifyContent: 'flex-end', padding: '10px 0' }}>
-      {saveStatus === 'saved'     && <span style={{ fontSize: '12px', color: '#22C55E' }}>Draft saved</span>}
-      {saveStatus === 'submitted' && <span style={{ fontSize: '12px', color: '#22C55E' }}>Submitted successfully</span>}
-      {saveStatus === 'error'     && <span style={{ fontSize: '12px', color: '#EF4444' }}>Save failed — try again</span>}
-      <button onClick={() => setShowLoadModal(true)} style={{ ...btnBase, background: '#1C1C1C', color: '#A0A0A0', border: '1px solid #2A2A2A' }}>Load a Saved Visit</button>
-      <button onClick={handleExport} disabled={!hasAnyData} style={{ ...btnBase, background: hasAnyData ? '#1A3A2A' : '#1C1C1C', color: hasAnyData ? '#22C55E' : '#555', border: `1px solid ${hasAnyData ? '#22C55E' : '#2A2A2A'}`, cursor: hasAnyData ? 'pointer' : 'not-allowed' }}>Export this form</button>
-      <button onClick={handleNewVisit} style={newBtn}>Start New Visit</button>
-      <button onClick={handleSave}   disabled={isSaving || !visitId} style={saveBtn}>{isSaving ? 'Saving…' : 'Save Draft'}</button>
-      <button onClick={handleSubmit} disabled={isSaving || !visitId} style={submitBtn}>{isSaving ? 'Saving…' : 'Submit'}</button>
-    </div>
-  );
+  const ActionBar = () => {
+    const isMobile = window.innerWidth < 640;
+    return (
+      <div className="no-print" style={{ display: 'flex', gap: '8px', alignItems: 'center', justifyContent: isMobile ? 'space-between' : 'flex-end', padding: '10px 0', flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
+        {saveStatus === 'saved'     && <span style={{ fontSize: '12px', color: '#22C55E' }}>Draft saved</span>}
+        {saveStatus === 'submitted' && <span style={{ fontSize: '12px', color: '#22C55E' }}>Submitted successfully</span>}
+        {saveStatus === 'error'     && <span style={{ fontSize: '12px', color: '#EF4444' }}>Save failed — try again</span>}
+        <div style={{ display: 'flex', gap: '8px', flexWrap: isMobile ? 'wrap' : 'nowrap', justifyContent: isMobile ? 'flex-end' : 'flex-start' }}>
+          <button onClick={() => setShowLoadModal(true)} style={{ ...newBtn }}>Load a Visit</button>
+          <button onClick={handleExport} disabled={!hasAnyData} style={{ ...newBtn, opacity: hasAnyData ? 1 : 0.4, cursor: hasAnyData ? 'pointer' : 'not-allowed' }}>Export</button>
+          <button onClick={handleNewVisit} style={newBtn}>Start New Visit</button>
+          <button onClick={handleSave}   disabled={isSaving || !visitId} style={saveBtn}>{isSaving ? 'Saving…' : 'Save Draft'}</button>
+          <button onClick={handleSubmit} disabled={isSaving || !visitId} style={submitBtn}>{isSaving ? 'Saving…' : 'Submit'}</button>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div style={{ fontFamily: 'inherit' }}>

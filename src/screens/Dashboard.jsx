@@ -56,8 +56,9 @@ function DealerCard({ dealer, isPlanned, onPostpone, onPlanToday, isDraggable, c
       onDragStart={isDraggable && canPlan && !isManager ? (e) => e.dataTransfer.setData('text/plain', dealer.id) : undefined}
       style={{
         display: 'flex',
-        alignItems: 'center',
-        gap: '16px',
+        flexDirection: window.innerWidth < 640 ? 'column' : 'row',
+        alignItems: window.innerWidth < 640 ? 'stretch' : 'center',
+        gap: '12px',
         marginBottom: '10px',
         transition: 'border-color 0.2s, opacity 0.2s',
         cursor: isDraggable && !isManager ? (canPlan ? 'grab' : 'not-allowed') : 'default',
@@ -68,7 +69,10 @@ function DealerCard({ dealer, isPlanned, onPostpone, onPlanToday, isDraggable, c
     >
       {/* Priority bar */}
       <div style={{
-        width: '4px', height: '52px', borderRadius: '2px', flexShrink: 0,
+        width: '4px',
+        height: '52px',
+        borderRadius: '2px',
+        flexShrink: 0,
         background: dealer.priority === 'HIGH' ? '#EF4444'
                   : dealer.priority === 'MED'  ? '#F59E0B' : '#22C55E',
       }} />
@@ -99,13 +103,24 @@ function DealerCard({ dealer, isPlanned, onPostpone, onPlanToday, isDraggable, c
       </div>
 
       {/* Buttons */}
-      <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+      <div style={{
+        display: 'flex',
+        flexDirection: window.innerWidth < 640 ? 'column' : 'row',
+        gap: '8px',
+        flexShrink: 0,
+        width: window.innerWidth < 640 ? '100%' : 'auto',
+      }}>
         {isPlanned ? (
           <button
             onClick={(e) => { e.stopPropagation(); onPostpone?.(dealer.id); }}
             disabled={isManager}
             className="btn-secondary"
-            style={{ whiteSpace: 'nowrap', padding: '8px 12px', fontSize: '12px', color: isManager ? undefined : 'var(--text-secondary)' }}
+            style={{
+              whiteSpace: 'nowrap',
+              fontSize: '12px',
+              color: isManager ? undefined : 'var(--text-secondary)',
+              flex: window.innerWidth < 640 ? 1 : undefined,
+            }}
           >
             Postpone ↷
           </button>
@@ -116,11 +131,13 @@ function DealerCard({ dealer, isPlanned, onPostpone, onPlanToday, isDraggable, c
             className="btn-secondary"
             title={canPlan ? '' : 'Postpone a visit above to free a slot'}
             style={{
-              whiteSpace: 'nowrap', padding: '8px 12px', fontSize: '12px',
+              whiteSpace: 'nowrap',
+              fontSize: '12px',
               color: canPlan && !isManager ? '#A100FF' : 'var(--text-muted)',
               borderColor: canPlan && !isManager ? 'rgba(161,0,255,0.4)' : 'var(--border)',
               cursor: canPlan && !isManager ? 'pointer' : 'not-allowed',
               opacity: canPlan && !isManager ? 1 : 0.5,
+              flex: window.innerWidth < 640 ? 1 : undefined,
             }}
           >
             + Plan Today
@@ -129,7 +146,11 @@ function DealerCard({ dealer, isPlanned, onPostpone, onPlanToday, isDraggable, c
         <button
           onClick={handleClick}
           className={isPlanned ? 'btn-primary' : 'btn-secondary'}
-          style={{ whiteSpace: 'nowrap', padding: '8px 16px', fontSize: '13px' }}
+          style={{
+            whiteSpace: 'nowrap',
+            fontSize: '12px',
+            flex: window.innerWidth < 640 ? 1 : undefined,
+          }}
         >
           {isPlanned ? 'Start Visit →' : 'View Dealership'}
         </button>
@@ -1465,8 +1486,7 @@ export default function Dashboard() {
   const [apiDealers,     setApiDealers]     = useState([]);
   const [dealersLoading, setDealersLoading] = useState(true);
 
-  // Auto-recommended: segment B dealers where M2 achievement < 60%
-  // OR logic: purchase target < 60% OR sales target < 60%
+  // Default recommended dealers: segment B dealers where M2 achievement < 60%
   const recommendedDealers = apiDealers
     .filter((d) => {
       if (d.abcSegment !== 'B') return false;
@@ -1521,6 +1541,7 @@ export default function Dashboard() {
   };
   const postponeDealer = (id) => setPlannedIds(prev => prev.filter(p => p !== id));
 
+
   const searchedDealers = dealerSearch.trim() === ''
     ? otherDealers
     : otherDealers.filter(d =>
@@ -1548,7 +1569,7 @@ export default function Dashboard() {
     {
       label:    'Open Actions',
       value:    dealersLoading ? '…' : String(belowTarget),
-      sub:      dealersLoading ? '' : `${recommendedDealers.length} recommended today`,
+      sub:      dealersLoading ? '' : `${belowTarget} below 60% target`,
       subColor: '#EF4444',
       icon:     <CheckSquare size={24} color="#A100FF" />,
     },
@@ -1569,7 +1590,7 @@ export default function Dashboard() {
   ];
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg)', padding: '24px' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--bg)', padding: window.innerWidth < 640 ? '16px' : '24px' }}>
       {/* Modals */}
       {showWeekPlan && <WeekPlanModal onClose={() => setShowWeekPlan(false)} plannedDealers={recommendedDealers} otherDealers={demoDealers} />}
       {showPlanDay && <PlanMyDayModal onClose={() => setShowPlanDay(false)} />}
@@ -1616,9 +1637,9 @@ export default function Dashboard() {
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(5, 1fr)',
-          gap: '12px',
-          marginBottom: '24px',
+          gridTemplateColumns: window.innerWidth < 640 ? 'repeat(2, 1fr)' : 'repeat(5, 1fr)',
+          gap: window.innerWidth < 640 ? '8px' : '12px',
+          marginBottom: window.innerWidth < 640 ? '16px' : '24px',
         }}
       >
         {territoryKpis.map((kpi) => (

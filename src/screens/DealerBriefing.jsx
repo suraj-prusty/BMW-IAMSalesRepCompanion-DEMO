@@ -558,28 +558,64 @@ export default function DealerBriefing() {
               {showFullKPI ? 'Hide KPIs ▲' : 'View Full KPIs ▼'}
             </button>
             {showFullKPI && (
-              <div style={{ marginTop: '14px', border: '1px solid var(--border)', borderRadius: '6px', overflow: 'hidden' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-                  <thead>
-                    <tr style={{ background: 'var(--surface-raised)' }}>
-                      {['Metric', 'Actual', 'Target', 'Note'].map((h) => (
-                        <th key={h} style={{ padding: '10px 14px', textAlign: 'left', color: 'var(--text-secondary)', fontWeight: '500', borderBottom: '1px solid var(--border)' }}>
-                          {h}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {fullKpiTable.map((row, i) => (
-                      <tr key={row.metric} style={{ borderBottom: i < fullKpiTable.length - 1 ? '1px solid var(--border)' : 'none' }}>
-                        <td style={{ padding: '10px 14px', color: 'var(--text-primary)' }}>{row.metric}</td>
-                        <td style={{ padding: '10px 14px', color: row.color, fontWeight: '600' }}>{row.actual}</td>
-                        <td style={{ padding: '10px 14px', color: '#22C55E' }}>{row.target}</td>
-                        <td style={{ padding: '10px 14px', color: 'var(--text-secondary)', fontSize: '12px' }}>{row.note}</td>
-                      </tr>
+              <div style={{ marginTop: '14px' }}>
+                {/* Desktop: Table view */}
+                {window.innerWidth >= 768 ? (
+                  <div style={{ border: '1px solid var(--border)', borderRadius: '6px', overflow: 'hidden' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                      <thead>
+                        <tr style={{ background: 'var(--surface-raised)' }}>
+                          {['Metric', 'Actual', 'Target', 'Note'].map((h) => (
+                            <th key={h} style={{ padding: '10px 14px', textAlign: 'left', color: 'var(--text-secondary)', fontWeight: '500', borderBottom: '1px solid var(--border)' }}>
+                              {h}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {fullKpiTable.map((row, i) => (
+                          <tr key={row.metric} style={{ borderBottom: i < fullKpiTable.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                            <td style={{ padding: '10px 14px', color: 'var(--text-primary)' }}>{row.metric}</td>
+                            <td style={{ padding: '10px 14px', color: row.color, fontWeight: '600' }}>{row.actual}</td>
+                            <td style={{ padding: '10px 14px', color: '#22C55E' }}>{row.target}</td>
+                            <td style={{ padding: '10px 14px', color: 'var(--text-secondary)', fontSize: '12px' }}>{row.note}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  /* Mobile: Card view */
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {fullKpiTable.map((row) => (
+                      <div key={row.metric} style={{
+                        border: `2px solid ${row.color}`,
+                        borderRadius: '6px',
+                        padding: '12px',
+                        background: 'rgba(255,255,255,0.02)',
+                      }}>
+                        <div style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '8px' }}>
+                          {row.metric}
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px', marginBottom: '8px' }}>
+                          <div>
+                            <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '3px' }}>Actual</div>
+                            <div style={{ fontSize: '13px', fontWeight: '600', color: row.color }}>{row.actual}</div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '3px' }}>Target</div>
+                            <div style={{ fontSize: '13px', fontWeight: '600', color: '#22C55E' }}>{row.target}</div>
+                          </div>
+                        </div>
+                        {row.note && (
+                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', paddingTop: '8px', borderTop: '1px solid var(--border)' }}>
+                            {row.note}
+                          </div>
+                        )}
+                      </div>
                     ))}
-                  </tbody>
-                </table>
+                  </div>
+                )}
               </div>
             )}
           </div>

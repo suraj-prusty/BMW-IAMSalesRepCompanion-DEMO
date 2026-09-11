@@ -9,12 +9,13 @@ const baseInput = {
   border: '1px solid #2A2A2A',
   borderRadius: '6px',
   color: '#FFFFFF',
-  fontSize: '12px',
-  padding: '7px 10px',
+  fontSize: window.innerWidth < 640 ? '14px' : '12px',
+  padding: window.innerWidth < 640 ? '10px 12px' : '7px 10px',
   fontFamily: 'inherit',
   width: '100%',
   boxSizing: 'border-box',
   outline: 'none',
+  minHeight: '44px',
 };
 
 function Inp({ value, onChange, placeholder, type = 'text', mode, style = {} }) {
@@ -72,14 +73,15 @@ function YesNo({ value, onChange }) {
 // ── Layout helpers ────────────────────────────────────────────
 
 function Sec({ letter, title, subtitle, loading, children }) {
+  const isMobile = window.innerWidth < 640;
   return (
-    <div className="card" style={{ marginBottom: '16px' }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', marginBottom: '18px', borderBottom: '1px solid #1E1E1E', paddingBottom: '12px', flexWrap: 'wrap' }}>
-        <span style={{ fontSize: '16px', fontWeight: '700', color: '#A100FF' }}>{letter}.</span>
-        <span style={{ fontSize: '13px', fontWeight: '700', color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{title}</span>
-        {subtitle && <span style={{ fontSize: '11px', color: '#A0A0A0', textTransform: 'none', letterSpacing: 0 }}>{subtitle}</span>}
+    <div className="card" style={{ marginBottom: isMobile ? '12px' : '16px' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: isMobile ? '6px' : '10px', marginBottom: isMobile ? '12px' : '18px', borderBottom: '1px solid #1E1E1E', paddingBottom: isMobile ? '8px' : '12px', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: isMobile ? '14px' : '16px', fontWeight: '700', color: '#A100FF' }}>{letter}.</span>
+        <span style={{ fontSize: isMobile ? '12px' : '13px', fontWeight: '700', color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{title}</span>
+        {subtitle && <span style={{ fontSize: '10px', color: '#A0A0A0', textTransform: 'none', letterSpacing: 0 }}>{subtitle}</span>}
         {loading && (
-          <span style={{ fontSize: '10px', color: '#A0A0A0', fontStyle: 'italic', marginLeft: 'auto' }}>Loading live data…</span>
+          <span style={{ fontSize: '9px', color: '#A0A0A0', fontStyle: 'italic', marginLeft: 'auto' }}>Loading live data…</span>
         )}
       </div>
       {children}
@@ -88,16 +90,19 @@ function Sec({ letter, title, subtitle, loading, children }) {
 }
 
 function Grid2({ children, style = {} }) {
+  const isMobile = window.innerWidth < 640;
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 20px', marginBottom: '12px', ...style }}>
+    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: isMobile ? '10px' : '12px 20px', marginBottom: '12px', ...style }}>
       {children}
     </div>
   );
 }
 
 function Grid3({ children }) {
+  const isMobile = window.innerWidth < 640;
+  const isTablet = window.innerWidth < 1024;
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px 24px', marginBottom: '12px' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : isTablet ? '1fr 1fr' : '1fr 1fr 1fr', gap: isMobile ? '10px' : isTablet ? '12px 16px' : '16px 24px', marginBottom: '12px' }}>
       {children}
     </div>
   );
@@ -105,9 +110,9 @@ function Grid3({ children }) {
 
 function Fld({ label, children, span, fromApi, hint }) {
   return (
-    <div style={span ? { gridColumn: `span ${span}` } : {}}>
+    <div style={span ? { gridColumn: `span ${span}`, display: 'flex', flexDirection: 'column' } : { display: 'flex', flexDirection: 'column' }}>
       {label && (
-        <div style={{ fontSize: '11px', color: '#A0A0A0', marginBottom: '5px', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
+        <div style={{ fontSize: '11px', color: '#A0A0A0', marginBottom: '5px', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap', minHeight: '16px' }}>
           {label}
           {fromApi && (
             <span
@@ -120,7 +125,9 @@ function Fld({ label, children, span, fromApi, hint }) {
           )}
         </div>
       )}
-      {children}
+      <div style={{ display: 'flex', flex: 1 }}>
+        {children}
+      </div>
     </div>
   );
 }
@@ -401,23 +408,28 @@ export default function DealerVisitForm({ onDealerNameLoaded }) {
     document.title = prev;
   };
 
-  const btnBase   = { padding: '8px 20px', borderRadius: '6px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', border: 'none', letterSpacing: '0.04em' };
+  const btnBase   = { borderRadius: '6px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', border: 'none', letterSpacing: '0.04em', minHeight: '44px', padding: window.innerWidth < 640 ? '10px 12px' : '8px 20px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', whiteSpace: 'nowrap' };
   const newBtn    = { ...btnBase, background: 'transparent', color: '#A0A0A0', border: '1px solid #2A2A2A' };
   const saveBtn   = { ...btnBase, background: '#2A2A2A', color: '#FFFFFF' };
   const submitBtn = { ...btnBase, background: '#A100FF', color: '#FFFFFF' };
 
-  const ActionBar = () => (
-    <div className="no-print" style={{ display: 'flex', gap: '10px', alignItems: 'center', justifyContent: 'flex-end', padding: '10px 0', flexWrap: 'wrap' }}>
-      {saveStatus === 'saved'      && <span style={{ fontSize: '12px', color: '#22C55E' }}>Draft saved</span>}
-      {saveStatus === 'submitted'  && <span style={{ fontSize: '12px', color: '#22C55E' }}>Submitted successfully</span>}
-      {saveStatus === 'error'      && <span style={{ fontSize: '12px', color: '#EF4444' }}>Save failed — try again</span>}
-      <button onClick={handleNewVisit} style={newBtn}>Start New Visit</button>
-      <button onClick={() => { setLoadDealerCode(routeId || ''); setLoadVisitDate(''); setLoadError(''); setShowLoadModal(true); }} style={newBtn}>Load a Saved Visit</button>
-      <button onClick={handleExport} disabled={!hasAnyData} style={{ ...newBtn, opacity: hasAnyData ? 1 : 0.4, cursor: hasAnyData ? 'pointer' : 'not-allowed' }}>Export this form</button>
-      <button onClick={handleSave}   disabled={isSaving || !visitId} style={saveBtn}>{isSaving ? 'Saving…' : 'Save Draft'}</button>
-      <button onClick={handleSubmit} disabled={isSaving || !visitId} style={submitBtn}>{isSaving ? 'Saving…' : 'Submit'}</button>
-    </div>
-  );
+  const ActionBar = () => {
+    const isMobile = window.innerWidth < 640;
+    return (
+      <div className="no-print" style={{ display: 'flex', gap: '8px', alignItems: 'center', justifyContent: isMobile ? 'space-between' : 'flex-end', padding: '10px 0', flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
+        {saveStatus === 'saved'      && <span style={{ fontSize: '12px', color: '#22C55E' }}>Draft saved</span>}
+        {saveStatus === 'submitted'  && <span style={{ fontSize: '12px', color: '#22C55E' }}>Submitted successfully</span>}
+        {saveStatus === 'error'      && <span style={{ fontSize: '12px', color: '#EF4444' }}>Save failed — try again</span>}
+        <div style={{ display: 'flex', gap: '8px', flexWrap: isMobile ? 'wrap' : 'nowrap', justifyContent: isMobile ? 'flex-end' : 'flex-start' }}>
+          <button onClick={handleNewVisit} style={newBtn}>Start New Visit</button>
+          <button onClick={() => { setLoadDealerCode(routeId || ''); setLoadVisitDate(''); setLoadError(''); setShowLoadModal(true); }} style={newBtn}>Load a Visit</button>
+          <button onClick={handleExport} disabled={!hasAnyData} style={{ ...newBtn, opacity: hasAnyData ? 1 : 0.4, cursor: hasAnyData ? 'pointer' : 'not-allowed' }}>Export</button>
+          <button onClick={handleSave}   disabled={isSaving || !visitId} style={saveBtn}>{isSaving ? 'Saving…' : 'Save Draft'}</button>
+          <button onClick={handleSubmit} disabled={isSaving || !visitId} style={submitBtn}>{isSaving ? 'Saving…' : 'Submit'}</button>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div style={{ fontFamily: 'inherit' }}>
@@ -516,23 +528,30 @@ export default function DealerVisitForm({ onDealerNameLoaded }) {
         </Grid3>
 
         <PurpleBorder>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '10px', marginBottom: '0' }}>
-            <Fld label="Total no. of IRs in database"><Inp value={b.irTotal} onChange={(v) => ub('irTotal', v)} mode="int" /></Fld>
-            <Fld label="A IRs"><Inp value={b.irA} onChange={(v) => ub('irA', v)} mode="int" /></Fld>
-            <Fld label="B IRs"><Inp value={b.irB} onChange={(v) => ub('irB', v)} mode="int" /></Fld>
-            <Fld label="C IRs"><Inp value={b.irC} onChange={(v) => ub('irC', v)} mode="int" /></Fld>
-            <Fld label="A+B+C Check">
-              {(() => {
-                const sum = Number(b.irA) + Number(b.irB) + Number(b.irC);
-                const total = Number(b.irTotal);
-                const hasValues = b.irA !== '' || b.irB !== '' || b.irC !== '' || b.irTotal !== '';
-                if (!hasValues) return <span style={{ fontSize: '12px', color: '#A0A0A0' }}>—</span>;
-                return sum === total
-                  ? <span style={{ fontSize: '12px', fontWeight: '700', color: '#22C55E' }}>OK</span>
-                  : <span style={{ fontSize: '12px', fontWeight: '700', color: '#EF4444' }}>Does not match total</span>;
-              })()}
-            </Fld>
-          </div>
+          {(() => {
+            const isMobile = window.innerWidth < 640;
+            const isTablet = window.innerWidth < 1024;
+            const cols = isMobile ? 1 : isTablet ? 2 : 5;
+            return (
+              <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: '10px', marginBottom: '0' }}>
+                <Fld label="Total no. of IRs in database"><Inp value={b.irTotal} onChange={(v) => ub('irTotal', v)} mode="int" /></Fld>
+                <Fld label="A IRs"><Inp value={b.irA} onChange={(v) => ub('irA', v)} mode="int" /></Fld>
+                <Fld label="B IRs"><Inp value={b.irB} onChange={(v) => ub('irB', v)} mode="int" /></Fld>
+                <Fld label="C IRs"><Inp value={b.irC} onChange={(v) => ub('irC', v)} mode="int" /></Fld>
+                <Fld label="A+B+C Check">
+                  {(() => {
+                    const sum = Number(b.irA) + Number(b.irB) + Number(b.irC);
+                    const total = Number(b.irTotal);
+                    const hasValues = b.irA !== '' || b.irB !== '' || b.irC !== '' || b.irTotal !== '';
+                    if (!hasValues) return <span style={{ fontSize: '12px', color: '#A0A0A0' }}>—</span>;
+                    return sum === total
+                      ? <span style={{ fontSize: '12px', fontWeight: '700', color: '#22C55E' }}>OK</span>
+                      : <span style={{ fontSize: '12px', fontWeight: '700', color: '#EF4444' }}>Does not match total</span>;
+                  })()}
+                </Fld>
+              </div>
+            );
+          })()}
         </PurpleBorder>
 
         <Grid2>
@@ -545,13 +564,20 @@ export default function DealerVisitForm({ onDealerNameLoaded }) {
             <YesNo value={b.annualTargetAgreed} onChange={(v) => ub('annualTargetAgreed', v)} />
           </Fld>
           <div style={{ fontSize: '12px', fontWeight: '600', color: '#FFFFFF', margin: '12px 0 8px' }}>Annual targets (from the NSC agreement)</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '10px', marginBottom: '0' }}>
-            <Fld label="TO target"><Inp value={b.toTarget} onChange={(v) => ub('toTarget', v)} mode="currency" /></Fld>
-            <Fld label="TO growth target"><Inp value={b.toGrowth} onChange={(v) => ub('toGrowth', v)} mode="pct" /></Fld>
-            <Fld label="IAM mix target"><Inp value={b.iamMix} onChange={(v) => ub('iamMix', v)} mode="pct" /></Fld>
-            <Fld label="Sell in / Sell out target"><Inp value={b.sellInOut} onChange={(v) => ub('sellInOut', v)} /></Fld>
-            <Fld label="No. of IRs target"><Inp value={b.irTarget} onChange={(v) => ub('irTarget', v)} mode="int" /></Fld>
-          </div>
+          {(() => {
+            const isMobile = window.innerWidth < 640;
+            const isTablet = window.innerWidth < 1024;
+            const cols = isMobile ? 1 : isTablet ? 2 : 5;
+            return (
+              <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: '10px', marginBottom: '0' }}>
+                <Fld label="TO target"><Inp value={b.toTarget} onChange={(v) => ub('toTarget', v)} mode="currency" /></Fld>
+                <Fld label="TO growth target"><Inp value={b.toGrowth} onChange={(v) => ub('toGrowth', v)} mode="pct" /></Fld>
+                <Fld label="IAM mix target"><Inp value={b.iamMix} onChange={(v) => ub('iamMix', v)} mode="pct" /></Fld>
+                <Fld label="Sell in / Sell out target"><Inp value={b.sellInOut} onChange={(v) => ub('sellInOut', v)} /></Fld>
+                <Fld label="No. of IRs target"><Inp value={b.irTarget} onChange={(v) => ub('irTarget', v)} mode="int" /></Fld>
+              </div>
+            );
+          })()}
         </PurpleBorder>
 
         <Fld label="Marketing plan status (Principle 5.3 — agreed by end of January)">
