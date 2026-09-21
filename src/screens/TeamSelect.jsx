@@ -6,7 +6,7 @@ import { TEAM_REPS } from '../data/teamReps';
 import { getTodayLong } from '../utils/dateUtils';
 import TeamDocuments from '../components/TeamDocuments';
 
-const PAGE_SIZE = 5;
+const PAGE_SIZE = 6; // even multiple of the 2-column desktop grid
 
 // Below this viewport width: Dealer/IR panels stack, and KPI rows become a vertical list.
 const MOBILE_BREAKPOINT = 780;
