@@ -166,6 +166,73 @@ function RepCard({ rep, onOpen, isMobile, avatarBg }) {
   );
 }
 
+const MANAGER_KPIS = [
+  { key: 'purchaseRevVsTarget', label: 'Purchase Rev vs Target' },
+  { key: 'abc',                 label: 'ABC' },
+  { key: 'revYoY',              label: 'Rev YoY' },
+  { key: 'custMoM',             label: 'Cust YoY' },
+];
+
+function KpiPillBar({ selected, onToggle }) {
+  return (
+    <div style={{ marginBottom: '28px' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+        {MANAGER_KPIS.map((kpi) => {
+          const isSelected = selected.has(kpi.key);
+          const isDisabled = !isSelected && selected.size >= 2;
+          return (
+            <button
+              key={kpi.key}
+              onClick={() => !isDisabled && onToggle(kpi.key)}
+              style={{
+                padding: '8px 18px',
+                borderRadius: '20px',
+                border: isSelected ? '2px solid #A100FF' : '1.5px solid rgba(255,255,255,0.25)',
+                background: isSelected ? 'rgba(161,0,255,0.15)' : 'rgba(255,255,255,0.07)',
+                color: isSelected ? '#A100FF' : isDisabled ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.85)',
+                fontSize: '13px',
+                fontWeight: isSelected ? '700' : '500',
+                cursor: isDisabled ? 'not-allowed' : 'pointer',
+                opacity: isDisabled ? 0.5 : 1,
+                fontFamily: 'inherit',
+                transition: 'all 0.18s ease',
+                whiteSpace: 'nowrap',
+                letterSpacing: '0.01em',
+              }}
+              title={isDisabled ? 'Max 2 KPIs can be selected' : isSelected ? 'Deselect' : 'Select'}
+            >
+              {isSelected && <span style={{ marginRight: '5px', fontSize: '11px' }}>✓</span>}
+              {kpi.label}
+            </button>
+          );
+        })}
+        {selected.size > 0 && (
+          <button
+            onClick={() => onToggle(null)}
+            style={{
+              padding: '8px 12px',
+              borderRadius: '20px',
+              border: '1.5px solid transparent',
+              background: 'transparent',
+              color: 'var(--text-muted)',
+              fontSize: '12px',
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+            }}
+          >
+            Clear
+          </button>
+        )}
+      </div>
+      <div style={{ marginTop: '8px', fontSize: '11px', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+        Select up to 2 KPIs — dealerships marked{' '}
+        <span style={{ color: '#EF4444', fontWeight: '600' }}>Critical</span>{' '}
+        under the chosen KPIs will be highlighted across your team.
+      </div>
+    </div>
+  );
+}
+
 export default function TeamSelect() {
   const navigate = useNavigate();
   const manager  = api.getUser();
@@ -173,8 +240,19 @@ export default function TeamSelect() {
   const isMobile = width < MOBILE_BREAKPOINT;
   const isTwoCol = width >= TWO_COL_BREAKPOINT;
 
-  const [repSearch,   setRepSearch]   = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
+  const [repSearch,    setRepSearch]    = useState('');
+  const [currentPage,  setCurrentPage]  = useState(1);
+  const [selectedKpis, setSelectedKpis] = useState(new Set());
+
+  const handleKpiToggle = (key) => {
+    setSelectedKpis((prev) => {
+      if (key === null) return new Set();
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else if (next.size < 2) next.add(key);
+      return next;
+    });
+  };
 
   const filteredReps = useMemo(() => {
     const q = repSearch.trim().toLowerCase();
@@ -223,6 +301,9 @@ export default function TeamSelect() {
           Your authorized Sales Representative portfolio at a glance.
         </p>
       </div>
+
+      {/* KPI Filter Pills */}
+      <KpiPillBar selected={selectedKpis} onToggle={handleKpiToggle} />
 
       {/* Sales Representative Performance section */}
       <div style={{ marginBottom: '48px' }}>
@@ -289,7 +370,10 @@ export default function TeamSelect() {
                   rep={rep}
                   isMobile={isMobile}
                   avatarBg={avatarByRepId[rep.id]}
-                  onOpen={() => navigate('/dashboard')}
+                  onOpen={() => {
+                    sessionStorage.setItem('managerSelectedRepId', rep.id);
+                    navigate('/dashboard');
+                  }}
                 />
               ))}
             </div>

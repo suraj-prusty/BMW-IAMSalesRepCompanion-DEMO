@@ -30,8 +30,8 @@ export default function KpiFilterBar({
       icon: '💰',
     },
     {
-      name: 'custMoM',
-      label: 'Cust MoM',
+      name: 'custYoY',
+      label: 'Cust YoY',
       icon: '👥',
     },
     {

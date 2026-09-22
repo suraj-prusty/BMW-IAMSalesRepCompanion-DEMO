@@ -42,7 +42,7 @@ function DealerCard({ dealer, isPlanned, onPostpone, onPlanToday, isDraggable, c
            : dealer.yoyGrowth >= -10   ? '#F59E0B' : '#EF4444',
     },
     {
-      label: 'Cust MoM',
+      label: 'Cust YoY',
       value: dealer.customerMoM == null ? '—' : fmt(dealer.customerMoM),
       color: dealer.customerMoM == null ? '#606060'
            : dealer.customerMoM >= 0    ? '#22C55E' : '#EF4444',
@@ -1462,6 +1462,7 @@ function normalizeApiDealer(raw) {
 // ── Main Dashboard ─────────────────────────────────────────
 export default function Dashboard() {
   const isManager = api.isManager();
+  const currentUser = api.getUser();
   const [activeTab,      setActiveTab]      = useState('dealers');
   const [showWeekPlan,   setShowWeekPlan]   = useState(false);
   const [showPlanDay,    setShowPlanDay]    = useState(false);
@@ -1503,8 +1504,22 @@ export default function Dashboard() {
   const [dealerSearch,    setDealerSearch]    = useState('');
 
   const DEALER_PAGE_SIZE = 50;
-  const DEMO_DEALER_CODES = new Set([21125, 11380, 35955, 33400, 40477, 6057, 30864, 9118, 28965, 33160].map(String));
-  const demoDealers = apiDealers.filter(d => DEMO_DEALER_CODES.has(String(d.dealer_code)));
+  const MARCUS_DEALER_CODES = new Set([23100, 10581, 33512, 16258, 11107, 16215, 16285, 25025].map(String));
+  const SOFIA_DEALER_CODES  = new Set([22312, 13206, 16267, 22181, 32001, 10541, 15110, 16326].map(String));
+  const ALL_DEMO_DEALER_CODES = new Set([...MARCUS_DEALER_CODES, ...SOFIA_DEALER_CODES]);
+
+  const managerSelectedRepId = isManager ? sessionStorage.getItem('managerSelectedRepId') : null;
+  const repId =
+    managerSelectedRepId === 'marcus-schmidt' ? 'marcus' :
+    managerSelectedRepId === 'sofia-keller'   ? 'sofia'  :
+    currentUser?.repId;
+
+  const activeDealerCodes =
+    repId === 'marcus' ? MARCUS_DEALER_CODES :
+    repId === 'sofia'  ? SOFIA_DEALER_CODES  :
+    ALL_DEMO_DEALER_CODES;
+
+  const demoDealers = apiDealers.filter(d => activeDealerCodes.has(String(d.dealer_code)));
 
   // Seed "Recommended for Today" from auto-recommendations once API data arrives
   useEffect(() => {
@@ -1590,7 +1605,7 @@ export default function Dashboard() {
       }}>
         <div>
           <h1 style={{ margin: 0, fontSize: '26px', fontWeight: '700', color: 'var(--text-primary)', letterSpacing: '-0.01em' }}>
-            Good Morning, Marcus 👋
+            Good Morning, {currentUser?.name?.split(' ')[0] ?? 'Marcus'} 👋
           </h1>
           <p style={{ margin: '6px 0 0 0', fontSize: '13px', color: 'var(--text-secondary)' }}>
             {getTodayLong()} · C1 Europe · Week {getISOWeek()}
@@ -1689,7 +1704,7 @@ export default function Dashboard() {
               borderLeft: '3px solid #A100FF', paddingLeft: '10px',
               marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px',
             }}>
-              Recommended for Today
+              Recommended for this week
               {dragOver && (
                 <span style={{ fontSize: '10px', color: '#2d72de', fontWeight: '500', textTransform: 'none', letterSpacing: 0 }}>
                   Drop to add →

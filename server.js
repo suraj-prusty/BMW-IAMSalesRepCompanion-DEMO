@@ -3,6 +3,9 @@ import express from "express";
 import cors from "cors";
 import path from "path";
 import { fileURLToPath } from "url";
+import { randomUUID } from "crypto";
+import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 const app = express();
 const __filename = fileURLToPath(import.meta.url);
@@ -10,7 +13,11 @@ const __dirname = path.dirname(__filename);
 
 // ── Middleware ──────────────────────────────────────────────────────────────
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+
+// ── S3 config ──────────────────────────────────────────────────────────────
+const s3 = new S3Client({ region: process.env.AWS_REGION || "eu-central-1" });
+const S3_BUCKET = process.env.S3_BUCKET;
 
 // ── Azure OpenAI config (server-side — NEVER sent to browser) ───────────────
 const AZURE_CONFIG = {
@@ -144,6 +151,61 @@ app.post("/api/ai/generate", async (req, res) => {
     res.json({ reply });
   } catch (err) {
     console.error("[/api/ai/generate] Error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Photo pre-signed URL ───────────────────────────────────────────────────
+app.get("/api/photo-url", async (req, res) => {
+  try {
+    const { key } = req.query;
+    if (!key) return res.status(400).json({ error: "key is required" });
+    if (!S3_BUCKET) return res.status(500).json({ error: "S3_BUCKET is not configured" });
+
+    const url = await getSignedUrl(
+      s3,
+      new GetObjectCommand({ Bucket: S3_BUCKET, Key: key }),
+      { expiresIn: 3600 }
+    );
+    res.json({ url });
+  } catch (err) {
+    console.error("[/api/photo-url] Error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Photo upload → S3 ─────────────────────────────────────────────────────
+app.post("/api/upload-photo", async (req, res) => {
+  try {
+    const { base64, fileName, folder = "misc" } = req.body || {};
+    if (!base64 || !fileName) {
+      return res.status(400).json({ error: "base64 and fileName are required" });
+    }
+    if (!S3_BUCKET) {
+      return res.status(500).json({ error: "S3_BUCKET is not configured" });
+    }
+
+    const matches = base64.match(/^data:(.+);base64,(.+)$/);
+    if (!matches) {
+      return res.status(400).json({ error: "Invalid base64 data URL" });
+    }
+    const contentType = matches[1];
+    const buffer = Buffer.from(matches[2], "base64");
+    const ext = fileName.split(".").pop() || "jpg";
+    const key = `competitor-photos/${folder}/${randomUUID()}.${ext}`;
+
+    await s3.send(new PutObjectCommand({
+      Bucket: S3_BUCKET,
+      Key: key,
+      Body: buffer,
+      ContentType: contentType,
+    }));
+
+    const region = process.env.AWS_REGION || "eu-central-1";
+    const url = `https://${S3_BUCKET}.s3.${region}.amazonaws.com/${key}`;
+    res.json({ url, key });
+  } catch (err) {
+    console.error("[/api/upload-photo] Error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });

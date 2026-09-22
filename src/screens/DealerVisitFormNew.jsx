@@ -183,8 +183,15 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
               if (fd.visit_notes)                setVisitNotes(fd.visit_notes);
               if (fd.biggest_challenge)          setChallenge(fd.biggest_challenge);
               if (fd.biggest_opportunity)        setOpportunity(fd.biggest_opportunity);
-              if (fd.competitor_activity?.mode)  setCompetitorMode(fd.competitor_activity.mode);
-              if (fd.competitor_activity?.comment) setCompetitorComment(fd.competitor_activity.comment);
+              if (fd.competitor_activity?.mode)      setCompetitorMode(fd.competitor_activity.mode);
+              if (fd.competitor_activity?.comment)   setCompetitorComment(fd.competitor_activity.comment);
+              if (fd.competitor_activity?.photo_url) setCompetitorPhotoUrl(fd.competitor_activity.photo_url);
+              if (fd.competitor_activity?.photo_key) {
+                setCompetitorPhotoKey(fd.competitor_activity.photo_key);
+                api.getPhotoUrl(fd.competitor_activity.photo_key)
+                  .then((presigned) => setCompetitorPhoto(presigned))
+                  .catch((err) => console.error('[DealerVisitFormNew] getPhotoUrl failed:', err.message));
+              }
               if (fd.actions_agreed?.length)     setActions(fd.actions_agreed);
               if (fd.overall_status)             setOverallStatus(fd.overall_status);
               setDraftLoaded(true);
@@ -237,7 +244,10 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
   const [challenge,         setChallenge]         = useState('');
   const [opportunity,       setOpportunity]       = useState('');
   const [competitorMode,    setCompetitorMode]    = useState('Not Observed');
-  const [competitorPhoto,   setCompetitorPhoto]   = useState(null);
+  const [competitorPhoto,    setCompetitorPhoto]    = useState(null); // base64 or presigned URL for preview
+  const [competitorPhotoUrl, setCompetitorPhotoUrl] = useState('');  // permanent S3 URL stored in DB
+  const [competitorPhotoKey, setCompetitorPhotoKey] = useState('');  // S3 key used to regenerate presigned URL
+  const [photoUploading,     setPhotoUploading]     = useState(false);
   const [showCommentInput,  setShowCommentInput]  = useState(false);
   const [competitorComment, setCompetitorComment] = useState('');
   const [actions,           setActions]           = useState([
@@ -305,7 +315,9 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
       competitor_activity: {
         mode:      competitorMode,
         comment:   competitorComment,
-        has_photo: !!competitorPhoto,
+        has_photo: !!competitorPhotoUrl,
+        photo_url: competitorPhotoUrl || null,
+        photo_key: competitorPhotoKey || null,
       },
       actions_agreed:  actions.filter((a) => a.action),
       overall_status:  overallStatus,
@@ -353,7 +365,20 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (ev) => setCompetitorPhoto(ev.target.result);
+    reader.onload = async (ev) => {
+      const base64 = ev.target.result;
+      setCompetitorPhoto(base64);
+      setPhotoUploading(true);
+      try {
+        const { url, key } = await api.uploadPhoto(base64, file.name, 'dealer');
+        setCompetitorPhotoUrl(url);
+        setCompetitorPhotoKey(key);
+      } catch (err) {
+        console.error('[DealerVisitFormNew] photo upload failed:', err.message);
+      } finally {
+        setPhotoUploading(false);
+      }
+    };
     reader.readAsDataURL(file);
   };
 
@@ -387,13 +412,26 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
         padding: isMobile ? '16px 16px 0' : '20px 24px 0',
         gap: '12px', flexWrap: 'wrap',
       }}>
-        <div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
           <h1 style={{ margin: 0, fontSize: isMobile ? '18px' : '22px', fontWeight: '700', color: 'var(--text-primary)' }}>
             Visit Capture
           </h1>
-          <p style={{ margin: '2px 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
-            Capture what matters. Fast and easy.
-          </p>
+          {/* Dealer / IR toggle */}
+          <div style={{
+            display: 'inline-flex', background: 'var(--surface-raised)', border: '1px solid var(--border)',
+            borderRadius: '6px', padding: '2px', gap: '2px',
+          }}>
+            {[{ label: 'Dealer', path: `/visit-capture/${dealerId}` }, { label: 'IR', path: `/ir-visit-capture/${dealerId}` }].map(({ label, path }) => (
+              <button key={label} type="button" onClick={() => navigate(path)} style={{
+                padding: '4px 14px', borderRadius: '4px', border: 'none', cursor: 'pointer',
+                fontSize: '12px', fontWeight: '600', fontFamily: 'inherit', transition: 'all 0.15s',
+                background: label === 'Dealer' ? '#A100FF' : 'transparent',
+                color: label === 'Dealer' ? '#fff' : 'var(--text-secondary)',
+              }}>
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Action bar */}
@@ -641,12 +679,21 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
                         <img src={competitorPhoto} alt="Competitor" style={{
                           width: '72px', height: '50px', objectFit: 'cover',
                           borderRadius: '6px', border: '1px solid var(--border)', display: 'block',
+                          opacity: photoUploading ? 0.5 : 1,
                         }} />
-                        <button type="button" onClick={() => setCompetitorPhoto(null)} style={{
-                          position: 'absolute', top: '-6px', right: '-6px', width: '16px', height: '16px',
-                          borderRadius: '50%', background: '#EF4444', border: 'none', color: '#fff',
-                          fontSize: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        }}>×</button>
+                        {photoUploading && (
+                          <span style={{
+                            position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
+                            justifyContent: 'center', fontSize: '9px', color: 'var(--text-primary)',
+                          }}>Uploading…</span>
+                        )}
+                        {!photoUploading && (
+                          <button type="button" onClick={() => { setCompetitorPhoto(null); setCompetitorPhotoUrl(''); setCompetitorPhotoKey(''); }} style={{
+                            position: 'absolute', top: '-6px', right: '-6px', width: '16px', height: '16px',
+                            borderRadius: '50%', background: '#EF4444', border: 'none', color: '#fff',
+                            fontSize: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          }}>×</button>
+                        )}
                       </div>
                     ) : (
                       <button type="button" onClick={() => photoRef.current?.click()} style={{ ...outlineBtn }}>
@@ -883,7 +930,7 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
                 <div style={{ fontWeight: '700', fontSize: '9px', background: '#f5f5f5', padding: '4px 7px', marginBottom: '8px', borderLeft: '3px solid #1c69d4', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                   4. Competitor Activity
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: competitorMode === 'Observed' ? '8px' : '0' }}>
                   <span style={{
                     display: 'inline-block', padding: '3px 10px', borderRadius: '5px', fontWeight: '600', fontSize: '9px',
                     background: competitorMode === 'Observed' ? '#fee2e2' : '#dcfce7',
@@ -893,6 +940,12 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
                     <span style={{ color: '#555' }}>— {competitorComment}</span>
                   )}
                 </div>
+                {competitorMode === 'Observed' && competitorPhoto && (
+                  <div style={{ marginTop: '4px' }}>
+                    <div style={{ fontSize: '8px', color: '#777', marginBottom: '3px' }}>Evidence Photo</div>
+                    <img src={competitorPhoto} alt="Competitor evidence" style={{ maxWidth: '120px', maxHeight: '80px', objectFit: 'cover', borderRadius: '4px', border: '1px solid #ccc' }} />
+                  </div>
+                )}
               </div>
 
               {/* 5 + 6 — Challenge & Opportunity side by side */}

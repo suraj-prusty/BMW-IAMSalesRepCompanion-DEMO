@@ -339,7 +339,7 @@ export default function DealerBriefing() {
     { label: 'Rev Achievement', value: fmtAchv(dealer.revenueAchvPct), color: achvColor(dealer.revenueAchvPct) },
     { label: 'ABC Tier',        value: dealer.abcSegment || '—',        color: abcColor(dealer.abcSegment) },
     { label: 'Rev YoY',         value: fmtPct(dealer.yoyGrowth),        color: pctColor(dealer.yoyGrowth, -10) },
-    { label: 'Cust MoM',        value: fmtPct(dealer.customerMoM),      color: pctColor(dealer.customerMoM, 0) },
+    { label: 'Cust YoY',        value: fmtPct(dealer.customerMoM),      color: pctColor(dealer.customerMoM, 0) },
   ];
 
   // Full KPI table
@@ -925,7 +925,7 @@ export default function DealerBriefing() {
             className="btn-primary"
             style={{ width: '100%', padding: '14px', fontSize: '15px', fontWeight: '600' }}
           >
-            Start Visit →
+            Capture Visit →
           </button>
         </div>
       </div>

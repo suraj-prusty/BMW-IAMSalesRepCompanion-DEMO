@@ -58,6 +58,16 @@ const DEMO_USERS = [
     password: "Manager@2026",
     user:     { name: "Demo Manager", email: "manager.demo@corporate.com",   isManager: true },
   },
+  {
+    email:    "marcus.demo@corporate.com",
+    password: "Marcus@2026",
+    user:     { name: "Marcus Schmidt", email: "marcus.demo@corporate.com", isManager: false, repId: "marcus" },
+  },
+  {
+    email:    "sofia.demo@corporate.com",
+    password: "Sofia@2026",
+    user:     { name: "Sofia Keller", email: "sofia.demo@corporate.com", isManager: false, repId: "sofia" },
+  },
 ];
 
 // ── Public API ─────────────────────────────────────────────────────────────
@@ -116,6 +126,31 @@ export const api = {
     }
     const data = await response.json();
     return data.reply;
+  },
+
+  // ── Photo: get pre-signed view URL ───────────────────────────────────────
+  async getPhotoUrl(key) {
+    const response = await fetch(`${AI_BASE}/api/photo-url?key=${encodeURIComponent(key)}`);
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || `Failed to get photo URL: ${response.status}`);
+    }
+    const data = await response.json();
+    return data.url;
+  },
+
+  // ── Photo upload → S3 (via Express server) ──────────────────────────────
+  async uploadPhoto(base64, fileName, folder = "misc") {
+    const response = await fetch(`${AI_BASE}/api/upload-photo`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ base64, fileName, folder }),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || `Upload failed with status ${response.status}`);
+    }
+    return response.json(); // { url, key }
   },
 
   // ── AI: Generate (pitch, summary, email) ─────────────────────────────────

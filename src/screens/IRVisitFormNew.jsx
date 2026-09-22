@@ -180,18 +180,20 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
               if (fd.contact_met)                    setContactMet(fd.contact_met);
               if (fd.visit_type)                     setVisitType(fd.visit_type);
               if (fd.buying_behaviour)               setBuyingBehaviour(fd.buying_behaviour);
-              if (fd.competitor_insight?.mode)       setCompetitorMode(fd.competitor_insight.mode);
-              if (fd.competitor_insight?.competitor) setCompetitor(fd.competitor_insight.competitor);
+              if (fd.competitor_insight?.mode)        setCompetitorMode(fd.competitor_insight.mode);
+              if (fd.competitor_insight?.competitor)  setCompetitor(fd.competitor_insight.competitor);
               if (fd.competitor_insight?.category_lost) setCategoryLost(fd.competitor_insight.category_lost);
-              if (fd.competitor_insight?.reason)     setCompetitorReason(fd.competitor_insight.reason);
+              if (fd.competitor_insight?.reason)      setCompetitorReason(fd.competitor_insight.reason);
+              if (fd.competitor_insight?.photo_url)   setCompetitorPhotoUrl(fd.competitor_insight.photo_url);
+              if (fd.competitor_insight?.photo_key) {
+                setCompetitorPhotoKey(fd.competitor_insight.photo_key);
+                api.getPhotoUrl(fd.competitor_insight.photo_key)
+                  .then((presigned) => setCompetitorPhoto(presigned))
+                  .catch((err) => console.error('[IRVisitFormNew] getPhotoUrl failed:', err.message));
+              }
               if (fd.direct_sale?.sale_achieved != null) setSaleAchieved(fd.direct_sale.sale_achieved);
               if (fd.direct_sale?.products?.length)  setSaleRows(fd.direct_sale.products);
               if (fd.actions_agreed?.length)          setActions(fd.actions_agreed);
-              if (fd.next_visit?.date)               setNextVisitDate(fd.next_visit.date);
-              if (fd.next_visit?.time)               setNextVisitTime(fd.next_visit.time);
-              if (fd.next_visit?.objective_1)        setObjective1(fd.next_visit.objective_1);
-              if (fd.next_visit?.objective_2)        setObjective2(fd.next_visit.objective_2);
-              if (fd.next_visit?.objective_3)        setObjective3(fd.next_visit.objective_3);
               if (fd.visit_outcome)                  setVisitOutcome(fd.visit_outcome);
               if (fd.new_irs_identified)             setNewIRsIdentified(fd.new_irs_identified);
               setSaveStatus('draft_restored');
@@ -230,7 +232,10 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
   const [competitor,        setCompetitor]        = useState('');
   const [categoryLost,      setCategoryLost]      = useState('');
   const [competitorReason,  setCompetitorReason]  = useState('');
-  const [competitorPhoto,   setCompetitorPhoto]   = useState(null);
+  const [competitorPhoto,    setCompetitorPhoto]    = useState(null); // base64 or presigned URL for preview
+  const [competitorPhotoUrl, setCompetitorPhotoUrl] = useState('');  // permanent S3 URL stored in DB
+  const [competitorPhotoKey, setCompetitorPhotoKey] = useState('');  // S3 key used to regenerate presigned URL
+  const [photoUploading,     setPhotoUploading]     = useState(false);
 
   // Section 5 — Direct Sale
   const [saleAchieved, setSaleAchieved] = useState(false);
@@ -238,15 +243,10 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
     { product: '', qty: '', unitPrice: '', totalValue: '', invoiceRef: '' },
   ]);
 
-  // Section 6 — Actions & Next Visit
+  // Section 6 — Actions
   const [actions, setActions] = useState([
     { action: '', responsible: '', dueDate: '', priority: '', status: 'Open' },
   ]);
-  const [nextVisitDate,  setNextVisitDate]  = useState('');
-  const [nextVisitTime,  setNextVisitTime]  = useState('');
-  const [objective1,     setObjective1]     = useState('');
-  const [objective2,     setObjective2]     = useState('');
-  const [objective3,     setObjective3]     = useState('');
 
   // Section 7 — Visit Outcome
   const [visitOutcome,      setVisitOutcome]      = useState('');
@@ -281,7 +281,20 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (ev) => setCompetitorPhoto(ev.target.result);
+    reader.onload = async (ev) => {
+      const base64 = ev.target.result;
+      setCompetitorPhoto(base64);
+      setPhotoUploading(true);
+      try {
+        const { url, key } = await api.uploadPhoto(base64, file.name, 'ir');
+        setCompetitorPhotoUrl(url);
+        setCompetitorPhotoKey(key);
+      } catch (err) {
+        console.error('[IRVisitFormNew] photo upload failed:', err.message);
+      } finally {
+        setPhotoUploading(false);
+      }
+    };
     reader.readAsDataURL(file);
   };
 
@@ -310,7 +323,9 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
         competitor,
         category_lost: categoryLost,
         reason:        competitorReason,
-        has_photo:     !!competitorPhoto,
+        has_photo:     !!competitorPhotoUrl,
+        photo_url:     competitorPhotoUrl || null,
+        photo_key:     competitorPhotoKey || null,
       },
       direct_sale: {
         sale_achieved:    saleAchieved,
@@ -318,13 +333,6 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
         products:         saleRows.filter((r) => r.product),
       },
       actions_agreed: actions.filter((a) => a.action),
-      next_visit: {
-        date:        nextVisitDate,
-        time:        nextVisitTime,
-        objective_1: objective1,
-        objective_2: objective2,
-        objective_3: objective3,
-      },
       visit_outcome:       visitOutcome,
       new_irs_identified:  newIRsIdentified,
     },
@@ -407,12 +415,25 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
         display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
         flexWrap: 'wrap',
       }}>
-        <div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
           <div style={{ fontSize: '17px', fontWeight: '700', color: 'var(--text-primary)', lineHeight: 1.2 }}>
             IR Visit Capture
           </div>
-          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '1px' }}>
-            IR Visit Capture · Salvs &amp; Mins
+          {/* Dealer / IR toggle */}
+          <div style={{
+            display: 'inline-flex', background: 'var(--surface-raised)', border: '1px solid var(--border)',
+            borderRadius: '6px', padding: '2px', gap: '2px',
+          }}>
+            {[{ label: 'Dealer', path: `/visit-capture/${irId}` }, { label: 'IR', path: `/ir-visit-capture/${irId}` }].map(({ label, path }) => (
+              <button key={label} type="button" onClick={() => navigate(path)} style={{
+                padding: '4px 14px', borderRadius: '4px', border: 'none', cursor: 'pointer',
+                fontSize: '12px', fontWeight: '600', fontFamily: 'inherit', transition: 'all 0.15s',
+                background: label === 'IR' ? '#A100FF' : 'transparent',
+                color: label === 'IR' ? '#fff' : 'var(--text-secondary)',
+              }}>
+                {label}
+              </button>
+            ))}
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', ...(isMobile && { width: '100%' }) }}>
@@ -606,13 +627,29 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
                   </div>
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '2px' }}>
                     {competitorPhoto ? (
-                      <img src={competitorPhoto} alt="Evidence" style={{
-                        width: '72px', height: '52px', objectFit: 'cover',
-                        borderRadius: '6px', border: '1px solid var(--border)',
-                      }} />
+                      <div style={{ position: 'relative', flexShrink: 0 }}>
+                        <img src={competitorPhoto} alt="Evidence" style={{
+                          width: '72px', height: '52px', objectFit: 'cover',
+                          borderRadius: '6px', border: '1px solid var(--border)',
+                          opacity: photoUploading ? 0.5 : 1,
+                        }} />
+                        {photoUploading && (
+                          <span style={{
+                            position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
+                            justifyContent: 'center', fontSize: '9px', color: 'var(--text-primary)',
+                          }}>Uploading…</span>
+                        )}
+                        {!photoUploading && (
+                          <button type="button" onClick={() => { setCompetitorPhoto(null); setCompetitorPhotoUrl(''); setCompetitorPhotoKey(''); }} style={{
+                            position: 'absolute', top: '-6px', right: '-6px', width: '16px', height: '16px',
+                            borderRadius: '50%', background: '#EF4444', border: 'none', color: '#fff',
+                            fontSize: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          }}>×</button>
+                        )}
+                      </div>
                     ) : null}
-                    <button type="button" onClick={() => photoRef.current?.click()} style={outlineBtn}>
-                      <Camera size={12} /> {competitorPhoto ? 'Change Photo' : 'Upload Photo'}
+                    <button type="button" onClick={() => photoRef.current?.click()} style={outlineBtn} disabled={photoUploading}>
+                      <Camera size={12} /> {photoUploading ? 'Uploading…' : competitorPhoto ? 'Change Photo' : 'Upload Photo'}
                     </button>
                     <input ref={photoRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePhoto} />
                   </div>
@@ -758,34 +795,6 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
               <Plus size={13} /> Add Another Action
             </button>
 
-            {/* Next Visit Planning */}
-            <div style={{ marginTop: '16px', paddingTop: '14px', borderTop: '1px solid var(--border)' }}>
-              <div style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '10px' }}>Next Visit Planning</div>
-              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
-                <div>
-                  <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '3px' }}>Next Visit Date (Tentative)</div>
-                  <input type="date" value={nextVisitDate} onChange={(e) => setNextVisitDate(e.target.value)} style={inputStyle} />
-                </div>
-                <div>
-                  <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '3px' }}>Agreed Visit Time</div>
-                  <input type="time" value={nextVisitTime} onChange={(e) => setNextVisitTime(e.target.value)} style={inputStyle} />
-                </div>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                {[
-                  { label: 'Next Visit Objective 1', value: objective1, set: setObjective1 },
-                  { label: 'Next Visit Objective 2', value: objective2, set: setObjective2 },
-                  { label: 'Next Visit Objective 3', value: objective3, set: setObjective3 },
-                ].map(({ label, value, set }) => (
-                  <div key={label}>
-                    <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '3px' }}>{label}</div>
-                    <input type="text" value={value} onChange={(e) => set(e.target.value)}
-                      placeholder={`e.g. ${label === 'Next Visit Objective 1' ? 'Increase brake purchases' : label === 'Next Visit Objective 2' ? 'PL24 adoption' : 'Consolidate more categories'}`}
-                      style={inputStyle} />
-                  </div>
-                ))}
-              </div>
-            </div>
           </SectionCard>
 
           {/* 7 ─ Visit Outcome */}
@@ -1052,7 +1061,7 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
                 {/* 7. ACTIONS AGREED */}
                 <div style={{ marginBottom: '14px' }}>
                   <div style={{ fontWeight: '700', fontSize: '9px', background: '#f5f5f5', padding: '4px 7px', marginBottom: '8px', borderLeft: '3px solid #1c69d4', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                    7. Actions Agreed
+                    7. Actions & Next Visit Planning
                   </div>
                   {actions.filter((a) => a.action).length > 0 ? (
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '8.5px' }}>
@@ -1086,52 +1095,28 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
                   )}
                 </div>
 
-                {/* 8. NEXT VISIT PLANNING | 9. VISIT OUTCOME — side by side */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
-                  <div>
-                    <div style={{ fontWeight: '700', fontSize: '9px', background: '#f5f5f5', padding: '4px 7px', marginBottom: '8px', borderLeft: '3px solid #1c69d4', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                      8. Next Visit Planning
-                    </div>
-                    <div style={{ display: 'flex', gap: '5px', marginBottom: '5px' }}>
-                      <span style={{ color: '#777', minWidth: '80px', flexShrink: 0 }}>Next Visit Date</span>
-                      <span style={{ fontWeight: '600' }}>{nextVisitDate || '—'}</span>
-                    </div>
-                    <div style={{ display: 'flex', gap: '5px', marginBottom: '8px' }}>
-                      <span style={{ color: '#777', minWidth: '80px', flexShrink: 0 }}>Agreed Visit Time</span>
-                      <span style={{ fontWeight: '600' }}>{nextVisitTime || '—'}</span>
-                    </div>
-                    <div style={{ fontSize: '8px', color: '#777', marginBottom: '4px' }}>Objectives</div>
-                    <ul style={{ margin: 0, paddingLeft: '14px' }}>
-                      {[objective1, objective2, objective3].filter(Boolean).length > 0
-                        ? [objective1, objective2, objective3].filter(Boolean).map((obj, i) => (
-                            <li key={i} style={{ color: '#333', marginBottom: '2px' }}>{obj}</li>
-                          ))
-                        : <li style={{ color: '#999', fontStyle: 'italic', listStyle: 'none', paddingLeft: 0 }}>No objectives set</li>
-                      }
-                    </ul>
+                {/* 8. VISIT OUTCOME */}
+                <div style={{ marginBottom: '14px' }}>
+                  <div style={{ fontWeight: '700', fontSize: '9px', background: '#f5f5f5', padding: '4px 7px', marginBottom: '8px', borderLeft: '3px solid #1c69d4', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    8. Visit Outcome
                   </div>
-                  <div>
-                    <div style={{ fontWeight: '700', fontSize: '9px', background: '#f5f5f5', padding: '4px 7px', marginBottom: '8px', borderLeft: '3px solid #1c69d4', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                      9. Visit Outcome
-                    </div>
-                    <div style={{
-                      display: 'inline-flex', alignItems: 'center', gap: '6px',
-                      padding: '4px 10px', borderRadius: '6px', marginBottom: '8px',
-                      background: visitOutcome === 'Order Generated' ? '#dcfce7'
-                        : visitOutcome === 'Opportunity Identified' ? '#fef9c3'
-                        : visitOutcome === 'No Progress' ? '#fee2e2'
-                        : '#f5f5f5',
-                      color: visitOutcome === 'Order Generated' ? '#16a34a'
-                        : visitOutcome === 'Opportunity Identified' ? '#d97706'
-                        : visitOutcome === 'No Progress' ? '#dc2626'
-                        : '#999',
-                      fontWeight: '700', fontSize: '9px',
-                    }}>
-                      {visitOutcome || 'Not set'}
-                    </div>
-                    <div style={{ fontSize: '8px', color: '#777', marginBottom: '3px' }}>New IRs Identified in Area</div>
-                    <div style={{ fontWeight: '600', color: '#1a1a1a', fontSize: '9px' }}>{newIRsIdentified}</div>
+                  <div style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '6px',
+                    padding: '4px 10px', borderRadius: '6px', marginBottom: '8px',
+                    background: visitOutcome === 'Order Generated' ? '#dcfce7'
+                      : visitOutcome === 'Opportunity Identified' ? '#fef9c3'
+                      : visitOutcome === 'No Progress' ? '#fee2e2'
+                      : '#f5f5f5',
+                    color: visitOutcome === 'Order Generated' ? '#16a34a'
+                      : visitOutcome === 'Opportunity Identified' ? '#d97706'
+                      : visitOutcome === 'No Progress' ? '#dc2626'
+                      : '#999',
+                    fontWeight: '700', fontSize: '9px',
+                  }}>
+                    {visitOutcome || 'Not set'}
                   </div>
+                  <div style={{ fontSize: '8px', color: '#777', marginBottom: '3px' }}>New IRs Identified in Area</div>
+                  <div style={{ fontWeight: '600', color: '#1a1a1a', fontSize: '9px' }}>{newIRsIdentified}</div>
                 </div>
 
                 {/* Footer */}
