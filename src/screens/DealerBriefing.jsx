@@ -920,7 +920,7 @@ export default function DealerBriefing() {
 
           {/* Start Visit CTA */}
           <button
-            onClick={() => navigate(`/visit/${dealer.id}`)}
+            onClick={() => navigate(`/visit-capture/${dealer.id}`)}
             disabled={isManager}
             className="btn-primary"
             style={{ width: '100%', padding: '14px', fontSize: '15px', fontWeight: '600' }}

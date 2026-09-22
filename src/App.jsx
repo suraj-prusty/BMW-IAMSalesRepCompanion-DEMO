@@ -7,6 +7,8 @@ import Login from './screens/Login';
 import Dashboard from './screens/Dashboard';
 import DealerBriefing from './screens/DealerBriefing';
 import VisitCapture from './screens/VisitCapture';
+import DealerVisitFormNew from './screens/DealerVisitFormNew';
+import IRVisitFormNew from './screens/IRVisitFormNew';
 import ReviewSubmit from './screens/ReviewSubmit';
 import Success from './screens/Success';
 import TeamSelect from './screens/TeamSelect';
@@ -26,7 +28,7 @@ export const ThemeContext = createContext({ isDark: true, toggleTheme: () => {} 
 export function useTheme() { return useContext(ThemeContext); }
 
 // Shows Navbar on all screens except /login and /success
-const STEP_ROUTES = ['/dealer', '/visit', '/submit'];
+const STEP_ROUTES = ['/dealer', '/visit', '/visit-capture', '/submit'];
 const NO_NAVBAR   = ['/login', '/success'];
 const NO_CHATBOT  = ['/submit', '/success', '/login', '/team'];
 
@@ -64,7 +66,7 @@ function AppLayout() {
             />
           ))}
           {/* Dark overlay */}
-          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.55)' }} />
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.78)' }} />
         </div>
       )}
 
@@ -85,7 +87,9 @@ function AppLayout() {
           <Route path="/team"        element={<PrivateRoute><TeamSelect /></PrivateRoute>} />
           <Route path="/dashboard"   element={<PrivateRoute><Dashboard /></PrivateRoute>} />
           <Route path="/dealer/:id"  element={<PrivateRoute><DealerBriefing /></PrivateRoute>} />
-          <Route path="/visit/:id"   element={<PrivateRoute><VisitCapture /></PrivateRoute>} />
+          <Route path="/visit/:id"         element={<PrivateRoute><VisitCapture /></PrivateRoute>} />
+          <Route path="/visit-capture/:id"    element={<PrivateRoute><DealerVisitFormNew /></PrivateRoute>} />
+          <Route path="/ir-visit-capture/:id" element={<PrivateRoute><IRVisitFormNew /></PrivateRoute>} />
           <Route path="/submit/:id"  element={<PrivateRoute><ReviewSubmit /></PrivateRoute>} />
           <Route path="/success"     element={<PrivateRoute><Success /></PrivateRoute>} />
           <Route path="*"            element={<Navigate to="/login" replace />} />

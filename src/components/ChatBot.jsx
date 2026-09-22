@@ -222,14 +222,14 @@ export default function ChatBot() {
             width: '52px',
             height: '52px',
             borderRadius: '50%',
-            background: '#A100FF',
+            background: '#2d72de',
             border: 'none',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             zIndex: 1000,
-            boxShadow: '0 4px 20px rgba(161,0,255,0.4)',
+            boxShadow: '0 4px 20px rgba(45,114,222,0.4)',
           }}
         >
           <MessageCircle size={22} color="#fff" />
@@ -263,7 +263,7 @@ export default function ChatBot() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              background: 'linear-gradient(135deg, rgba(161,0,255,0.15), transparent)',
+              background: 'linear-gradient(135deg, rgba(45,114,222,0.15), transparent)',
               borderRadius: '12px 12px 0 0',
             }}
           >
@@ -272,7 +272,7 @@ export default function ChatBot() {
                 style={{
                   width: '28px',
                   height: '28px',
-                  background: '#A100FF',
+                  background: '#2d72de',
                   borderRadius: '6px',
                   display: 'flex',
                   alignItems: 'center',
@@ -347,8 +347,8 @@ export default function ChatBot() {
                     fontSize: '10.5px',
                     lineHeight: '1.3',
                     borderRadius: '8px',
-                    border: selectedMode === m.key ? '1px solid #A100FF' : '1px solid #2A2A2A',
-                    background: selectedMode === m.key ? 'rgba(161,0,255,0.18)' : 'transparent',
+                    border: selectedMode === m.key ? '1px solid #2d72de' : '1px solid #2d3a52',
+                    background: selectedMode === m.key ? 'rgba(45,114,222,0.18)' : 'transparent',
                     color: selectedMode === m.key ? '#FFFFFF' : '#A0A0A0',
                     cursor: 'pointer',
                     fontWeight: selectedMode === m.key ? '600' : '400',
@@ -381,8 +381,8 @@ export default function ChatBot() {
             {messages.length === 0 && selectedMode === 'campaign' && (
               <div
                 style={{
-                  background: 'rgba(161,0,255,0.06)',
-                  border: '1px solid rgba(161,0,255,0.25)',
+                  background: 'rgba(45,114,222,0.06)',
+                  border: '1px solid rgba(45,114,222,0.25)',
                   borderRadius: '8px',
                   padding: '10px 12px',
                   color: '#A0A0A0',
@@ -406,8 +406,8 @@ export default function ChatBot() {
                       key={q}
                       onClick={() => sendMessage(q)}
                       style={{
-                        background: 'rgba(161,0,255,0.08)',
-                        border: '1px solid rgba(161,0,255,0.3)',
+                        background: 'rgba(45,114,222,0.08)',
+                        border: '1px solid rgba(45,114,222,0.3)',
                         borderRadius: '8px',
                         padding: '6px 10px',
                         color: '#FFFFFF',
@@ -418,10 +418,10 @@ export default function ChatBot() {
                         lineHeight: '1.4',
                       }}
                       onMouseEnter={(e) =>
-                        (e.currentTarget.style.background = 'rgba(161,0,255,0.18)')
+                        (e.currentTarget.style.background = 'rgba(45,114,222,0.18)')
                       }
                       onMouseLeave={(e) =>
-                        (e.currentTarget.style.background = 'rgba(161,0,255,0.08)')
+                        (e.currentTarget.style.background = 'rgba(45,114,222,0.08)')
                       }
                     >
                       {q}
@@ -447,7 +447,7 @@ export default function ChatBot() {
                     style={{
                       width: '24px',
                       height: '24px',
-                      background: '#A100FF',
+                      background: '#2d72de',
                       borderRadius: '50%',
                       display: 'flex',
                       alignItems: 'center',
@@ -464,7 +464,7 @@ export default function ChatBot() {
                     maxWidth: '78%',
                     padding: '9px 12px',
                     borderRadius: msg.role === 'user' ? '12px 4px 12px 12px' : '4px 12px 12px 12px',
-                    background: msg.role === 'user' ? '#A100FF' : '#1C1C1C',
+                    background: msg.role === 'user' ? '#2d72de' : '#1e283b',
                     color: '#FFFFFF',
                     fontSize: '13px',
                     lineHeight: '1.5',
@@ -482,7 +482,7 @@ export default function ChatBot() {
                   style={{
                     width: '24px',
                     height: '24px',
-                    background: '#A100FF',
+                    background: '#2d72de',
                     borderRadius: '50%',
                     display: 'flex',
                     alignItems: 'center',
@@ -534,7 +534,7 @@ export default function ChatBot() {
               onClick={() => sendMessage(input)}
               disabled={inputDisabled || !input.trim() || isLoading}
               style={{
-                background: !inputDisabled && input.trim() && !isLoading ? '#A100FF' : '#2A2A2A',
+                background: !inputDisabled && input.trim() && !isLoading ? '#2d72de' : '#2d3a52',
                 border: 'none',
                 borderRadius: '6px',
                 padding: '9px 12px',

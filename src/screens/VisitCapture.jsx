@@ -6,8 +6,9 @@ import { dataService } from '../data/dataService';
 import { dealers } from '../data/dealers';
 import { getCurrentTime } from '../utils/dateUtils';
 import { api } from '../services/api';
-import DealerVisitForm from './DealerVisitForm';
-import IRVisitForm from './IRVisitForm';
+import DealerVisitForm from './DealerVisitForm';  // kept for future use
+import IRVisitForm from './IRVisitForm';            // kept for future use
+import DealerVisitFormNew from './DealerVisitFormNew';
 
 // ── Chip multi-select ───────────────────────────────────────
 function ChipSelect({ options, selected, onChange }) {
@@ -280,9 +281,13 @@ export default function VisitCapture() {
   const [formType, setFormType] = useState('dealer');
   const [apiDealerName, setApiDealerName] = useState('');
 
+  // ── Shared form shown first; DealerVisitForm / IRVisitForm kept below for future use ──
+  return <DealerVisitFormNew dealer={dealer} data={data} dealerId={id} />;
+
+  // ── DealerVisitForm / IRVisitForm toggle (kept for future use) ──────────────
+  // eslint-disable-next-line no-unreachable
   return (
     <div style={{ minHeight: '100vh', background: '#0A0A0A', padding: '20px 24px 60px' }}>
-      {/* Shared header with toggle */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px', marginBottom: '20px' }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px' }}>
           <BackButton />
@@ -301,7 +306,6 @@ export default function VisitCapture() {
             </p>
           </div>
         </div>
-        {/* Dealer / IR toggle */}
         <div style={{ display: 'inline-flex', background: '#1C1C1C', borderRadius: '24px', padding: '3px', border: '1px solid #2A2A2A', flexShrink: 0 }}>
           {['Dealer', 'IR'].map((opt) => (
             <button
@@ -309,13 +313,8 @@ export default function VisitCapture() {
               type="button"
               onClick={() => setFormType(opt.toLowerCase())}
               style={{
-                padding: '7px 24px',
-                borderRadius: '20px',
-                border: 'none',
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-                fontSize: '13px',
-                fontWeight: '600',
+                padding: '7px 24px', borderRadius: '20px', border: 'none', cursor: 'pointer',
+                fontFamily: 'inherit', fontSize: '13px', fontWeight: '600',
                 background: formType === opt.toLowerCase() ? '#A100FF' : 'transparent',
                 color: formType === opt.toLowerCase() ? '#FFFFFF' : '#A0A0A0',
                 transition: 'all 0.15s',
@@ -326,8 +325,6 @@ export default function VisitCapture() {
           ))}
         </div>
       </div>
-
-      {/* Form body */}
       {formType === 'dealer'
         ? <DealerVisitForm onDealerNameLoaded={setApiDealerName} />
         : <IRVisitForm dealer={dealer} />
@@ -335,7 +332,7 @@ export default function VisitCapture() {
     </div>
   );
 
-  // ── Original form (kept for easy revert — delete the return above and uncomment the one below) ──
+  // ── Original form (kept for reference) ──────────────────────────────────────
   return ( // eslint-disable-line no-unreachable
     <div style={{ minHeight: '100vh', background: '#0A0A0A', padding: '20px 24px 40px' }}>
       {/* Header */}
