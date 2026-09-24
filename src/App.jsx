@@ -6,6 +6,8 @@ import ChatBot from './components/ChatBot';
 import Login from './screens/Login';
 import Dashboard from './screens/Dashboard';
 import DealerBriefing from './screens/DealerBriefing';
+import IRBriefing from './screens/IRBriefing';
+import IRDashboard from './screens/IRDashboard';
 import VisitCapture from './screens/VisitCapture';
 import DealerVisitFormNew from './screens/DealerVisitFormNew';
 import IRVisitFormNew from './screens/IRVisitFormNew';
@@ -28,7 +30,6 @@ export const ThemeContext = createContext({ isDark: true, toggleTheme: () => {} 
 export function useTheme() { return useContext(ThemeContext); }
 
 // Shows Navbar on all screens except /login and /success
-const STEP_ROUTES = ['/dealer', '/visit', '/visit-capture', '/submit'];
 const NO_NAVBAR   = ['/login', '/success'];
 const NO_CHATBOT  = ['/submit', '/success', '/login', '/team'];
 
@@ -40,7 +41,13 @@ function AppLayout() {
   const { isDark } = useTheme();
   const { pathname } = useLocation();
   const showNavbar       = !NO_NAVBAR.some((r) => pathname === r || pathname.startsWith(r));
-  const showStepProgress = STEP_ROUTES.some((r) => pathname.startsWith(r));
+  const showStepProgress =
+    pathname.startsWith('/dealer/') ||
+    pathname.startsWith('/visit/') ||
+    pathname.startsWith('/visit-capture/') ||
+    pathname.startsWith('/ir/') ||
+    pathname.startsWith('/ir-visit-capture/') ||
+    pathname.startsWith('/submit/');
   const showChatbot      = !NO_CHATBOT.some((r) => pathname === r || pathname.startsWith(r));
 
   return (
@@ -86,7 +93,9 @@ function AppLayout() {
           <Route path="/login"       element={<Login />} />
           <Route path="/team"        element={<PrivateRoute><TeamSelect /></PrivateRoute>} />
           <Route path="/dashboard"   element={<PrivateRoute><Dashboard /></PrivateRoute>} />
+          <Route path="/ir-dashboard" element={<PrivateRoute><IRDashboard /></PrivateRoute>} />
           <Route path="/dealer/:id"  element={<PrivateRoute><DealerBriefing /></PrivateRoute>} />
+          <Route path="/ir/:id"      element={<PrivateRoute><IRBriefing /></PrivateRoute>} />
           <Route path="/visit/:id"         element={<PrivateRoute><VisitCapture /></PrivateRoute>} />
           <Route path="/visit-capture/:id"    element={<PrivateRoute><DealerVisitFormNew /></PrivateRoute>} />
           <Route path="/ir-visit-capture/:id" element={<PrivateRoute><IRVisitFormNew /></PrivateRoute>} />

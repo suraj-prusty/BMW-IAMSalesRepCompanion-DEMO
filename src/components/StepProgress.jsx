@@ -1,14 +1,20 @@
 import { useLocation } from 'react-router-dom';
 import { CheckCircle, ArrowRight } from 'lucide-react';
 
-const steps = [
-  { label: 'Dealer Briefing', path: '/dealer' },
-  { label: 'Visit Capture', path: '/visit' },
-  { label: 'Review & Submit', path: '/submit' },
-];
-
 export default function StepProgress() {
   const { pathname } = useLocation();
+  const isIRFlow = pathname.startsWith('/ir');
+  const steps = isIRFlow
+    ? [
+      { label: 'IR Briefing', path: '/ir/' },
+      { label: 'Visit Capture', path: '/ir-visit-capture' },
+      { label: 'Review & Submit', path: '/submit' },
+    ]
+    : [
+      { label: 'Dealer Briefing', path: '/dealer' },
+      { label: 'Visit Capture', path: '/visit' },
+      { label: 'Review & Submit', path: '/submit' },
+    ];
 
   const getStepState = (step, index) => {
     const currentIdx = steps.findIndex((s) => pathname.startsWith(s.path));

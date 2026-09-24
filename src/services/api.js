@@ -201,6 +201,30 @@ export const api = {
     return request(`/dealers/${code}/insights`);
   },
 
+  // ── IRs ─────────────────────────────────────────────────────────────────────
+  // Mirrors the dealer pattern (getDealerByCode / getInsights). Backend /irs
+  // endpoints are out of scope for now, so these resolve from local mock data.
+  // To go live: delete the mock branch and keep the request() call.
+  async getIRs() {
+    // return request("/irs");
+    const { IR_LIST } = await import("../data/irMockData");
+    return IR_LIST;
+  },
+
+  async getIRByCode(code) {
+    // return request(`/irs/${code}`);
+    const { IR_DETAIL } = await import("../data/irMockData");
+    const ir = IR_DETAIL[code];
+    if (!ir) throw new Error(`IR not found: ${code}`);
+    return ir;
+  },
+
+  async getIRInsights(code) {
+    // return request(`/irs/${code}/insights`);
+    const { IR_INSIGHTS } = await import("../data/irMockData");
+    return IR_INSIGHTS[code] || { top_issues: [], summary: "", pitch: [] };
+  },
+
   // ── Visit Forms (existing) ────────────────────────────────────────────────
   async getDraftVisit(dealerCode, formType) {
     return request(`/visits/${dealerCode}/draft?form_type=${formType}`);

@@ -1,12 +1,12 @@
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 
-export default function BackButton() {
+export default function BackButton({ to }) {
   const navigate = useNavigate();
 
   return (
     <button
-      onClick={() => navigate(-1)}
+      onClick={() => navigate(to || -1)}
       className="btn-secondary"
       style={{
         display: 'inline-flex',

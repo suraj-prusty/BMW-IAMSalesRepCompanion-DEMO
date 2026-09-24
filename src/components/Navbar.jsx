@@ -7,10 +7,11 @@ import { ThemeContext } from '../App';
 
 export default function Navbar() {
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [viewMode,     setViewMode]     = useState('Dealership');
+  const [,             setViewMode]     = useState('Dealership');
   const navigate   = useNavigate();
   const { pathname } = useLocation();
-  const isDashboard  = pathname === '/dashboard';
+  const isDashboard  = pathname === '/dashboard' || pathname === '/ir-dashboard';
+  const currentViewMode = pathname === '/ir-dashboard' ? 'IR' : 'Dealer';
   const { isDark, toggleTheme } = useContext(ThemeContext);
 
   const currentUser = api.getUser();
@@ -74,23 +75,23 @@ export default function Navbar() {
             {['Dealer', 'IR'].map((mode) => (
               <button
                 key={mode}
-                onClick={() => setViewMode(mode)}
+                onClick={() => { setViewMode(mode); navigate(mode === 'IR' ? '/ir-dashboard' : '/dashboard'); }}
                 style={{
                   padding: '5px 13px',
                   borderRadius: '6px',
                   fontSize: '12px',
-                  fontWeight: viewMode === mode ? '600' : '400',
+                  fontWeight: currentViewMode === mode ? '600' : '400',
                   cursor: 'pointer',
                   fontFamily: 'inherit',
                   border: 'none',
-                  background: viewMode === mode ? 'var(--accent-bg)' : 'transparent',
-                  color: viewMode === mode ? 'var(--accent)' : 'var(--text-secondary)',
-                  outline: viewMode === mode ? '1px solid rgba(161,0,255,0.35)' : 'none',
+                  background: currentViewMode === mode ? 'var(--accent-bg)' : 'transparent',
+                  color: currentViewMode === mode ? 'var(--accent)' : 'var(--text-secondary)',
+                  outline: currentViewMode === mode ? '1px solid rgba(161,0,255,0.35)' : 'none',
                   transition: 'all 0.18s',
                   whiteSpace: 'nowrap',
                 }}
-                onMouseEnter={(e) => { if (viewMode !== mode) e.currentTarget.style.color = 'var(--text-primary)'; }}
-                onMouseLeave={(e) => { if (viewMode !== mode) e.currentTarget.style.color = 'var(--text-secondary)'; }}
+                onMouseEnter={(e) => { if (currentViewMode !== mode) e.currentTarget.style.color = 'var(--text-primary)'; }}
+                onMouseLeave={(e) => { if (currentViewMode !== mode) e.currentTarget.style.color = 'var(--text-secondary)'; }}
               >
                 {mode}
               </button>
