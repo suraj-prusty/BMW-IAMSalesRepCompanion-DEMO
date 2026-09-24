@@ -197,6 +197,15 @@ export const api = {
     return request(`/dealers/${code}`);
   },
 
+  // Fetch KPI data for every dealer in the provided list concurrently.
+  // Returns an array in the same order as dealerCodes; failed fetches yield null.
+  async getAllDealerKpis(dealerCodes) {
+    const results = await Promise.allSettled(
+      dealerCodes.map((code) => request(`/dealers/${code}`))
+    );
+    return results.map((r) => (r.status === 'fulfilled' ? r.value : null));
+  },
+
   async getInsights(code) {
     return request(`/dealers/${code}/insights`);
   },

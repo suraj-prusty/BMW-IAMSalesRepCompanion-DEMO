@@ -43,9 +43,9 @@ function DealerCard({ dealer, isPlanned, onPostpone, onPlanToday, isDraggable, c
     },
     {
       label: 'Cust YoY',
-      value: dealer.customerMoM == null ? '—' : fmt(dealer.customerMoM),
-      color: dealer.customerMoM == null ? '#606060'
-           : dealer.customerMoM >= 0    ? '#22C55E' : '#EF4444',
+      value: dealer.customerYoY == null ? '—' : fmt(dealer.customerYoY),
+      color: dealer.customerYoY == null ? '#606060'
+           : dealer.customerYoY >= 0    ? '#22C55E' : '#EF4444',
     },
   ];
 
@@ -1378,10 +1378,15 @@ function PrioritizationView({ accountFilter, showAll, setShowAll }) {
 }
 
 // ── Normalize raw API dealer to DealerCard shape ──────────
-// The GET /dealers KPI structure varies per dealer:
-//   - Some have abc_segmentation: { segment, ytd_sales_eur, country, quantile }
-//   - Others have abc_segmentation: { M1_Target, M2_Target, M3_Target, QTD_Target } (revenue targets)
-//   - revenue_vs_target may be absent (targets stored inside abc_segmentation instead)
+// Handles the GET /dealers/{dealer_code} KPI structure:
+//   sale_revenue_vs_target, purchase_revenue_vs_target — M1/M2/M3 actuals & targets
+//   yoy_comparison — category-level YOY_PCT fields (aggregated when revenue_yoy is empty)
+//   revenue_yoy — cy_revenue_eur / ly_revenue_eur (preferred for yoyGrowth)
+//   abc_segmentation — segment, ytd_sales_eur, country, quantile
+//   customer_trend — customer_count_last_3_months (comma-separated), customer_count_trend ("Declining: 6.5%")
+//   comp_customer_count — current_month_customer_count, last_year_same_month_customer_count, growth_degrowth_pct, customer_growth_health_tag
+//   mom_decline — categories_with_decline_pct text
+//   high_turnover_low_activity — reserved for future display
 function normalizeApiDealer(raw) {
   const kpis        = raw.kpis || {};
   const abc         = kpis.abc_segmentation           || {};
@@ -1390,6 +1395,8 @@ function normalizeApiDealer(raw) {
   const ryoy        = kpis.revenue_yoy                || {};
   const yoyComp     = kpis.yoy_comparison             || {};
   const custTrend   = kpis.customer_trend             || {};
+  const compCust    = kpis.comp_customer_count        || {};
+  const momDecline  = kpis.mom_decline                || {};
 
   // Individual achievement %s kept for the OR filter in recommendations
   const purchaseAchvPct = purchaseRvt.M2_AchvPct ?? null;
@@ -1399,11 +1406,18 @@ function normalizeApiDealer(raw) {
   const rvt        = purchaseRvt;
   const targetType = 'purchase';
 
-  const abcSegment = abc.segment || null;
+  const abcSegment  = abc.segment  || null;
+  const ytdSalesEur = abc.ytd_sales_eur != null ? parseFloat(abc.ytd_sales_eur) : null;
+  const abcQuantile = abc.quantile  || null;
+
   const m2Target   = rvt.M2_Target  ?? abc.M2_Target  ?? null;
   const m2Actual   = rvt.M2_Actual  ?? abc.M2_Actual  ?? null;
   const m2AchvPct  = rvt.M2_AchvPct ?? abc.M2_AchvPct ?? null;
   const qtdTarget  = rvt.QTD_Target ?? abc.QTD_Target ?? null;
+
+  // Sale-side M2 targets (for informational display)
+  const saleM2Target = saleRvt.M2_Target ?? null;
+  const saleM2Actual = saleRvt.M2_Actual ?? null;
 
   let revenueVsTarget = null;
   if (m2AchvPct != null) {
@@ -1412,26 +1426,57 @@ function normalizeApiDealer(raw) {
     revenueVsTarget = Math.round((m2Actual / m2Target - 1) * 100 * 10) / 10;
   }
 
-  let yoyGrowth = null;
-  if (ryoy.cy_revenue_eur > 0 && ryoy.ly_revenue_eur > 0) {
-    yoyGrowth = Math.round((ryoy.cy_revenue_eur / ryoy.ly_revenue_eur - 1) * 100 * 10) / 10;
+  // YoY growth: use server-computed sales_growth_decline_pct directly
+  let yoyGrowth        = ryoy.sales_growth_decline_pct != null ? ryoy.sales_growth_decline_pct : null;
+  const yoyPerfTag     = ryoy.sales_performance_tag  || null;
+  const yoyHealthTag   = ryoy.dealer_health_tag       || null;
+
+  // Customer YoY — comp_customer_count (current month vs last year same month) → "Cust YoY" pill
+  let customerYoY = null;
+  if (compCust.growth_degrowth_pct != null) {
+    customerYoY = Math.round(compCust.growth_degrowth_pct * 10) / 10;
+  } else if (compCust.current_month_customer_count != null && compCust.last_year_same_month_customer_count > 0) {
+    customerYoY = Math.round(
+      (compCust.current_month_customer_count / compCust.last_year_same_month_customer_count - 1) * 100 * 10
+    ) / 10;
   }
 
-  // Customer MoM: % change from second-to-last → last month in customer_count_apr_may_jun
-  let customerMoM = null;
-  const cStr = custTrend.customer_count_apr_may_jun;
-  if (cStr) {
-    const nums = cStr.split(',').map((v) => parseInt(v.trim(), 10)).filter((v) => !isNaN(v));
-    if (nums.length >= 2) {
-      const prev = nums[nums.length - 2];
-      const curr = nums[nums.length - 1];
-      if (prev !== 0) {
-        customerMoM = Math.round((curr - prev) / prev * 100 * 10) / 10;
-      } else if (curr > 0) {
-        customerMoM = 100;
+  // Customer MoM — parse customer_count_trend into label + numeric value
+  // Format: "Declining: 13.03%" or "Stable" or "Growing: 3.2%"
+  let customerMoM      = null;
+  let customerMomLabel = null;
+  if (custTrend.customer_count_trend) {
+    const trendMatch = custTrend.customer_count_trend.match(/(declining|growing|stable)[:\s]*([\d.]+)%?/i);
+    if (trendMatch) {
+      const sign = trendMatch[1].toLowerCase() === 'declining' ? -1 : 1;
+      customerMoM      = sign * parseFloat(trendMatch[2]);
+      customerMomLabel = trendMatch[1].charAt(0).toUpperCase() + trendMatch[1].slice(1).toLowerCase();
+    } else {
+      customerMomLabel = custTrend.customer_count_trend;
+    }
+  }
+  if (customerMoM == null) {
+    const cStr = custTrend.customer_count_last_3_months;
+    if (cStr) {
+      const nums = cStr.split(',').map((v) => parseInt(v.trim(), 10)).filter((v) => !isNaN(v));
+      if (nums.length >= 2) {
+        const prev = nums[nums.length - 2];
+        const curr = nums[nums.length - 1];
+        if (prev !== 0) customerMoM = Math.round((curr - prev) / prev * 100 * 10) / 10;
+        else if (curr > 0) customerMoM = 100;
       }
     }
   }
+
+  // MoM decline: parse category decline text into structured list
+  // Format: "Category Name: 11.09%, Other Category: 7.66%, ..."
+  const momDeclineText = momDecline.categories_with_decline_pct || null;
+  const momDeclineCategories = momDeclineText
+    ? momDeclineText.split(',').map((s) => {
+        const m = s.trim().match(/^(.+?):\s*([\d.]+)%$/);
+        return m ? { name: m[1].trim(), pct: parseFloat(m[2]) } : null;
+      }).filter(Boolean)
+    : [];
 
   const priority  = abcSegment === 'A' ? 'LOW' : abcSegment === 'B' ? 'MED' : 'HIGH';
   const lastVisit = raw.run_date ? `Data: ${raw.run_date.slice(0, 10)}` : '—';
@@ -1442,11 +1487,22 @@ function normalizeApiDealer(raw) {
     name:            raw.dealer_name,
     location:        abc.country || '—',
     abcSegment,
+    abcQuantile,
+    ytdSalesEur,
     revenueVsTarget,
     revenueTarget:   m2Target ?? qtdTarget,
     revenueActual:   m2Actual,
+    saleRevenueTarget: saleM2Target,
+    saleRevenueActual: saleM2Actual,
     yoyGrowth,
+    yoyPerfTag,
+    yoyHealthTag,
+    yoyComparison:   yoyComp,
+    customerYoY,
     customerMoM,
+    customerMomLabel,
+    momDeclineText,
+    momDeclineCategories,
     priority,
     lastVisit,
     targetType,

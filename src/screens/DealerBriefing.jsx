@@ -94,6 +94,7 @@ function normalizeDealerDetail(raw) {
   const yoyComp     = kpis.yoy_comparison             || {};
   const momDecline  = kpis.mom_decline                || {};
   const custTrend   = kpis.customer_trend             || {};
+  const compCust    = kpis.comp_customer_count        || {};
 
   // Find best available month: M3 > M2 > M1
   const { month, monthName, purchaseRvt: pRvt, saleRvt: sRvt } = findBestMonth(purchaseRvt, saleRvt);
@@ -115,29 +116,31 @@ function normalizeDealerDetail(raw) {
     revenueVsTarget = (rvt[mActualKey] / rvt[mTargetKey] - 1) * 100;
   }
 
-  // yoyGrowth
-  let yoyGrowth = null;
-  let cyRevenue = null;
-  let lyRevenue = null;
-  if (ryoy.cy_revenue_eur > 0 && ryoy.ly_revenue_eur > 0) {
-    yoyGrowth = (ryoy.cy_revenue_eur / ryoy.ly_revenue_eur - 1) * 100;
-    cyRevenue = ryoy.cy_revenue_eur;
-    lyRevenue = ryoy.ly_revenue_eur;
-  }
+  // yoyGrowth: use server-computed sales_growth_decline_pct directly
+  const yoyFromCategories = false;
+  let yoyGrowth      = ryoy.sales_growth_decline_pct != null ? ryoy.sales_growth_decline_pct : null;
+  let cyRevenue      = ryoy.cy_revenue_eur  || null;
+  let lyRevenue      = ryoy.ly_revenue_eur  || null;
+  const salesGapEur  = ryoy.sales_gap_eur   ?? null;
+  const yoyPerfTag   = ryoy.sales_performance_tag || null;
+  const yoyHealthTag = ryoy.dealer_health_tag     || null;
 
-  // partsYoY — average all numeric values in yoy_comparison
+  // partsYoY — median of all category YOY_PCT values in yoy_comparison (separate from yoyGrowth)
   let partsYoY = null;
   let partsCyRevenue = null;
   let partsLyRevenue = null;
-  const yoyVals = Object.values(yoyComp).map((v) => parseFloat(v)).filter((v) => !isNaN(v));
+  const yoyVals = Object.values(yoyComp).map((v) => parseFloat(v)).filter((v) => !isNaN(v) && isFinite(v));
   if (yoyVals.length > 0) {
-    partsYoY = yoyVals.reduce((s, v) => s + v, 0) / yoyVals.length;
-    // Try to extract CY and LY revenue from yoyComp if available
+    // Median to avoid skew from extreme outliers (e.g. +672% spike in one category)
+    const sorted = [...yoyVals].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    partsYoY = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
     partsCyRevenue = yoyComp.cy_parts_revenue != null ? parseFloat(yoyComp.cy_parts_revenue) : null;
     partsLyRevenue = yoyComp.ly_parts_revenue != null ? parseFloat(yoyComp.ly_parts_revenue) : null;
   }
 
-  // momSalesGrowth: "None" → 0; comma-separated numbers → average (negative = decline)
+  // momSalesGrowth: parse "Category Name: 11.09%, Other: 7.66%, ..."
+  // Each entry is "label: value%", split on ", " and extract the numeric value after ":"
   let momSalesGrowth = null;
   let momDeclineTag = null;
   const momStr = momDecline.categories_with_decline_pct;
@@ -146,29 +149,65 @@ function normalizeDealerDetail(raw) {
       momSalesGrowth = 0;
       momDeclineTag = 'Stable';
     } else {
-      const nums = momStr.split(',').map((v) => parseFloat(v.trim())).filter((v) => !isNaN(v));
-      if (nums.length > 0) {
-        momSalesGrowth = nums.reduce((s, v) => s + v, 0) / nums.length;
+      const pcts = momStr.split(',').map((s) => {
+        const m = s.trim().match(/:\s*([\d.]+)%?$/);
+        return m ? parseFloat(m[1]) : NaN;
+      }).filter((v) => !isNaN(v));
+      if (pcts.length > 0) {
+        momSalesGrowth = -(pcts.reduce((s, v) => s + v, 0) / pcts.length);
       }
       momDeclineTag = 'Declining';
     }
   }
 
-  // activeClientsIrs + customerMoM from "apr, may, jun" customer counts
-  let activeClientsIrs = null;
+  // Customer YoY — from comp_customer_count (current month vs last year same month)
+  let customerYoY       = null;
+  let cyCustomerCount   = null;
+  let lyCustomerCount   = null;
+  let customerHealthTag = null;
+  let activeClientsIrs  = null;
+
+  if (compCust.current_month_customer_count != null) {
+    cyCustomerCount   = compCust.current_month_customer_count;
+    lyCustomerCount   = compCust.last_year_same_month_customer_count ?? null;
+    customerHealthTag = compCust.customer_growth_health_tag || null;
+    activeClientsIrs  = cyCustomerCount;
+    if (compCust.growth_degrowth_pct != null) {
+      customerYoY = Math.round(compCust.growth_degrowth_pct * 10) / 10;
+    } else if (lyCustomerCount != null && lyCustomerCount !== 0) {
+      customerYoY = Math.round((cyCustomerCount / lyCustomerCount - 1) * 100 * 10) / 10;
+    }
+  }
+
+  // Customer MoM — parse customer_count_trend into label + numeric value
+  // Format: "Declining: 13.03%" or "Stable" or "Growing: 3.2%"
   let customerMoM      = null;
-  let cyCustomerCount  = null;
-  let lyCustomerCount  = null;
-  const cStr = custTrend.customer_count_apr_may_jun;
+  let customerMomLabel = null;
+  if (custTrend.customer_count_trend) {
+    const trendMatch = custTrend.customer_count_trend.match(/(declining|growing|stable)[:\s]*([\d.]+)%?/i);
+    if (trendMatch) {
+      const sign = trendMatch[1].toLowerCase() === 'declining' ? -1 : 1;
+      customerMoM      = sign * parseFloat(trendMatch[2]);
+      customerMomLabel = trendMatch[1].charAt(0).toUpperCase() + trendMatch[1].slice(1).toLowerCase();
+    } else {
+      // Plain label with no percentage ("Stable")
+      customerMomLabel = custTrend.customer_count_trend;
+    }
+  }
+  const cStr = custTrend.customer_count_last_3_months;
   if (cStr) {
     const nums = cStr.split(',').map((v) => parseInt(v.trim(), 10)).filter((v) => !isNaN(v));
-    const lastNonZero = [...nums].reverse().find((v) => v !== 0);
-    activeClientsIrs = lastNonZero != null ? lastNonZero : null;
-    if (nums.length >= 2) {
+    if (activeClientsIrs == null) {
+      const lastNonZero = [...nums].reverse().find((v) => v !== 0);
+      activeClientsIrs = lastNonZero ?? null;
+    }
+    if (cyCustomerCount == null && nums.length > 0) {
+      cyCustomerCount = nums[nums.length - 1];
+    }
+    // Only compute from counts if trend string had no parseable percentage
+    if (customerMoM == null && nums.length >= 2) {
       const prev = nums[nums.length - 2];
       const curr = nums[nums.length - 1];
-      cyCustomerCount = curr;
-      lyCustomerCount = prev;
       customerMoM = prev !== 0
         ? Math.round((curr - prev) / prev * 100 * 10) / 10
         : curr > 0 ? 100 : null;
@@ -205,17 +244,24 @@ function normalizeDealerDetail(raw) {
     purchaseActual:   pRvt?.[mActualKey]    ?? null,
     purchaseTarget:   pRvt?.[mTargetKey]    ?? null,
     yoyGrowth,
+    yoyFromCategories,
     cyRevenue,
     lyRevenue,
+    salesGapEur,
+    yoyPerfTag,
+    yoyHealthTag,
     partsYoY,
     partsCyRevenue,
     partsLyRevenue,
     momSalesGrowth,
     momDeclineTag,
     activeClientsIrs,
+    customerYoY,
     customerMoM,
+    customerMomLabel,
     cyCustomerCount,
     lyCustomerCount,
+    customerHealthTag,
     openActionsCount: null,
     lastPurchaseMonth: null,
     priority,
@@ -339,7 +385,7 @@ export default function DealerBriefing() {
     { label: 'Rev Achievement', value: fmtAchv(dealer.revenueAchvPct), color: achvColor(dealer.revenueAchvPct) },
     { label: 'ABC Tier',        value: dealer.abcSegment || '—',        color: abcColor(dealer.abcSegment) },
     { label: 'Rev YoY',         value: fmtPct(dealer.yoyGrowth),        color: pctColor(dealer.yoyGrowth, -10) },
-    { label: 'Cust YoY',        value: fmtPct(dealer.customerMoM),      color: pctColor(dealer.customerMoM, 0) },
+    { label: 'Cust YoY',        value: fmtPct(dealer.customerYoY),      color: pctColor(dealer.customerYoY, 0) },
   ];
 
   // Full KPI table
@@ -385,9 +431,7 @@ export default function DealerBriefing() {
       metric: 'Revenue YoY Comp',
       actual: fmtPct(dealer.yoyGrowth),
       target: 'Positive (≥ 0%)',
-      note:   dealer.cyRevenue != null && dealer.lyRevenue != null
-            ? `CY revenue ${fmtEur(dealer.cyRevenue)}, LY revenue ${fmtEur(dealer.lyRevenue)}, ${Math.abs(dealer.yoyGrowth).toFixed(1)}% ${dealer.yoyGrowth >= 0 ? 'growth' : 'decline'}`
-            : '—',
+      note:   dealer.yoyPerfTag || dealer.yoyHealthTag || '—',
       color:  pctColor(dealer.yoyGrowth, -10),
     },
     {
@@ -395,16 +439,28 @@ export default function DealerBriefing() {
       actual: fmtPct(dealer.partsYoY),
       target: 'Positive (≥ 0%)',
       note:   dealer.partsCyRevenue != null && dealer.partsLyRevenue != null
-            ? `CY revenue ${fmtEur(dealer.partsCyRevenue)}, LY revenue ${fmtEur(dealer.partsLyRevenue)}, ${Math.abs(dealer.partsYoY).toFixed(1)}% ${dealer.partsYoY >= 0 ? 'growth' : 'decline'}`
-            : 'No parts data available',
+            ? `CY ${fmtEur(dealer.partsCyRevenue)} vs LY ${fmtEur(dealer.partsLyRevenue)} — ${Math.abs(dealer.partsYoY).toFixed(1)}% ${dealer.partsYoY >= 0 ? 'growth' : 'decline'}`
+            : 'Median YoY across product categories',
       color:  pctColor(dealer.partsYoY, 0),
     },
     {
+      metric: 'Customer Count YoY',
+      actual: dealer.customerYoY != null ? fmtPct(dealer.customerYoY) : '—',
+      target: 'Positive (≥ 0%)',
+      note:   dealer.customerHealthTag || 'No YoY data',
+      color:  dealer.customerYoY != null
+            ? pctColor(dealer.customerYoY, 0)
+            : dealer.customerHealthTag === 'Stable'    ? '#F59E0B'
+            : dealer.customerHealthTag === 'Growing'   ? '#22C55E'
+            : dealer.customerHealthTag === 'Declining' || dealer.customerHealthTag === 'Critical' ? '#EF4444'
+            : '#606060',
+    },
+    {
       metric: 'Customer Count MoM',
-      actual: '—',
-      target: '—',
-      note:   dealer.momDeclineTag || 'No data',
-      color:  dealer.momDeclineTag === 'Declining' ? '#EF4444' : dealer.momDeclineTag === 'Stable' ? '#F59E0B' : '#606060',
+      actual: dealer.customerMoM != null ? fmtPct(dealer.customerMoM) : '—',
+      target: 'Positive (≥ 0%)',
+      note:   dealer.customerMomLabel || 'No MoM data',
+      color:  pctColor(dealer.customerMoM, 0),
     },
     {
       metric: 'Active IR Clients',
