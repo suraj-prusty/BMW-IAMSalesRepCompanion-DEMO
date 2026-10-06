@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
   Sparkles, AlertTriangle, TrendingUp, Camera, Plus, Trash2,
   ExternalLink, Users, Package, Truck, Wrench, Volume2, Tag,
@@ -7,6 +8,7 @@ import {
   ToggleLeft, ToggleRight, Mic,
 } from 'lucide-react';
 import { api } from '../services/api';
+import { useVoiceRecorder } from '../hooks/useVoiceRecorder';
 import bmwLogo from '../assets/bmw-logo.svg';
 
 // ── Responsive hook ────────────────────────────────────────────────────────────
@@ -50,9 +52,9 @@ const RESPONSIBLE    = ['Rep', 'Dealer', 'Both'];
 const ACTION_STATUSES = ['Open', 'In Progress', 'Closed'];
 
 const VISIT_OUTCOMES = [
-  { label: 'Order Generated',      color: '#22C55E', bg: 'rgba(34,197,94,0.1)'   },
-  { label: 'Opportunity Identified',color: '#F59E0B', bg: 'rgba(245,158,11,0.1)' },
-  { label: 'No Progress',           color: '#EF4444', bg: 'rgba(239,68,68,0.1)'  },
+  { value: 'Order Generated',       tKey: 'orderGenerated',       color: '#22C55E', bg: 'rgba(34,197,94,0.1)'   },
+  { value: 'Opportunity Identified', tKey: 'opportunityIdentified', color: '#F59E0B', bg: 'rgba(245,158,11,0.1)' },
+  { value: 'No Progress',            tKey: 'noProgress',            color: '#EF4444', bg: 'rgba(239,68,68,0.1)'  },
 ];
 
 const priorityColor = (p) =>
@@ -117,7 +119,7 @@ function SummaryRow({ label, labelColor, children }) {
 }
 
 // ── Radio ─────────────────────────────────────────────────────────────────────
-function Radio({ value, selected, onChange }) {
+function Radio({ value, displayLabel, selected, onChange }) {
   return (
     <label style={{
       display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer',
@@ -132,7 +134,7 @@ function Radio({ value, selected, onChange }) {
       }}>
         {selected && <div style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#fff' }} />}
       </div>
-      {value}
+      {displayLabel !== undefined ? displayLabel : value}
     </label>
   );
 }
@@ -141,6 +143,7 @@ function Radio({ value, selected, onChange }) {
 // Main component
 // ═════════════════════════════════════════════════════════════════════════════
 export default function IRVisitFormNew({ irId: irIdProp }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { id: routeId } = useParams();
   const irId = irIdProp || routeId;
@@ -177,6 +180,7 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
               if (fd.topics_discussed?.length)       setTopics(fd.topics_discussed);
               if (fd.other_topic)                    setOtherTopicText(fd.other_topic);
               if (fd.visit_notes)                    setVisitNotes(fd.visit_notes);
+              if (fd.voice_note_key)                 setVoiceNoteKey(fd.voice_note_key);
               if (fd.contact_met)                    setContactMet(fd.contact_met);
               if (fd.visit_type)                     setVisitType(fd.visit_type);
               if (fd.buying_behaviour)               setBuyingBehaviour(fd.buying_behaviour);
@@ -251,6 +255,52 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
   // Section 7 — Visit Outcome
   const [visitOutcome,      setVisitOutcome]      = useState('');
   const [newIRsIdentified,  setNewIRsIdentified]  = useState('No');
+  const [voiceNoteKey,      setVoiceNoteKey]      = useState(''); // S3 key of stored audio
+
+  // ── Voice recorder ────────────────────────────────────────────────────────
+  const { isRecording, isTranscribing, error: voiceError, start: startRecording, stop: stopRecording } =
+    useVoiceRecorder({
+      visitId:       visitId,
+      folder:        'ir',
+      onTranscript:  (text) => {
+        setVisitNotes((prev) => prev ? prev + ' ' + text : text);
+        setPreSummaryNotes(null); // new recording invalidates undo
+      },
+      onAudioStored: (key)  => setVoiceNoteKey(key),
+    });
+
+  // ── AI Summarize + Undo (local only — not persisted) ─────────────────────
+  const [preSummaryNotes, setPreSummaryNotes] = useState(null);
+  const [isSummarizing,   setIsSummarizing]   = useState(false);
+  const [summarizeError,  setSummarizeError]  = useState(null);
+
+  const handleSummarize = async () => {
+    if (!visitNotes.trim() || isSummarizing) return;
+    setSummarizeError(null);
+    setIsSummarizing(true);
+    try {
+      const summary = await api.generate({
+        systemPrompt: 'You are a sales rep assistant. Summarise the independent repairer visit note in 3-5 concise bullet points. Preserve key facts, decisions, action items, and any specific numbers or names mentioned. Return plain text only, no markdown.',
+        userPrompt: visitNotes,
+        maxTokens: 300,
+        temperature: 0.3,
+      });
+      setPreSummaryNotes(visitNotes);
+      setVisitNotes(summary);
+    } catch (err) {
+      setSummarizeError('Could not generate summary. Please try again.');
+      console.error('[IRVisitFormNew] summarize error:', err.message);
+    } finally {
+      setIsSummarizing(false);
+    }
+  };
+
+  const handleRevertSummary = () => {
+    if (preSummaryNotes !== null) {
+      setVisitNotes(preSummaryNotes);
+      setPreSummaryNotes(null);
+    }
+  };
 
   // ── Helpers ───────────────────────────────────────────────────────────────
   const toggleTopic = (label) =>
@@ -317,6 +367,7 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
       topics_discussed:   topics,
       other_topic:        otherTopicText,
       visit_notes:        visitNotes,
+      voice_note_key:     voiceNoteKey || null,
       buying_behaviour:   buyingBehaviour,
       competitor_insight: {
         mode:          competitorMode,
@@ -400,7 +451,7 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
   if (apiLoading) {
     return (
       <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <span style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>Loading…</span>
+        <span style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>{t('irVisitForm.loading')}</span>
       </div>
     );
   }
@@ -417,19 +468,19 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
       }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
           <div style={{ fontSize: '17px', fontWeight: '700', color: 'var(--text-primary)', lineHeight: 1.2 }}>
-            IR Visit Capture
+            {t('irVisitForm.title')}
           </div>
           {/* Dealer / IR toggle */}
           <div style={{
             display: 'inline-flex', background: 'var(--surface-raised)', border: '1px solid var(--border)',
             borderRadius: '6px', padding: '2px', gap: '2px',
           }}>
-            {[{ label: 'Dealer', path: `/visit-capture/${irId}` }, { label: 'IR', path: `/ir-visit-capture/${irId}` }].map(({ label, path }) => (
-              <button key={label} type="button" onClick={() => navigate(path)} style={{
+            {[{ value: 'Dealer', label: t('irVisitForm.toggleDealer'), path: `/visit-capture/${irId}` }, { value: 'IR', label: t('irVisitForm.toggleIR'), path: `/ir-visit-capture/${irId}` }].map(({ value, label, path }) => (
+              <button key={value} type="button" onClick={() => navigate(path)} style={{
                 padding: '4px 14px', borderRadius: '4px', border: 'none', cursor: 'pointer',
                 fontSize: '12px', fontWeight: '600', fontFamily: 'inherit', transition: 'all 0.15s',
-                background: label === 'IR' ? '#A100FF' : 'transparent',
-                color: label === 'IR' ? '#fff' : 'var(--text-secondary)',
+                background: value === 'IR' ? '#A100FF' : 'transparent',
+                color: value === 'IR' ? '#fff' : 'var(--text-secondary)',
               }}>
                 {label}
               </button>
@@ -437,17 +488,17 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', ...(isMobile && { width: '100%' }) }}>
-          {saveStatus === 'draft_restored' && <span style={{ fontSize: '11px', color: '#F59E0B' }}>Draft restored</span>}
-          {saveStatus === 'saved'          && <span style={{ fontSize: '11px', color: '#22C55E' }}>✓ Saved</span>}
-          {saveStatus === 'submitted'      && <span style={{ fontSize: '11px', color: '#22C55E' }}>✓ Submitted</span>}
-          {saveStatus === 'error'          && <span style={{ fontSize: '11px', color: '#EF4444' }}>Save failed</span>}
+          {saveStatus === 'draft_restored' && <span style={{ fontSize: '11px', color: '#F59E0B' }}>{t('irVisitForm.saveStatus.draftRestored')}</span>}
+          {saveStatus === 'saved'          && <span style={{ fontSize: '11px', color: '#22C55E' }}>{t('irVisitForm.saveStatus.saved')}</span>}
+          {saveStatus === 'submitted'      && <span style={{ fontSize: '11px', color: '#22C55E' }}>{t('irVisitForm.saveStatus.submitted')}</span>}
+          {saveStatus === 'error'          && <span style={{ fontSize: '11px', color: '#EF4444' }}>{t('irVisitForm.saveStatus.failed')}</span>}
           <button onClick={handleSave} disabled={isSaving} style={{
             padding: '8px 16px', borderRadius: '8px', fontSize: '12px', fontWeight: '600',
             cursor: 'pointer', fontFamily: 'inherit',
             background: 'transparent', border: '1.5px solid var(--border)', color: 'var(--text-primary)',
             ...(isMobile && { flex: 1 }),
           }}>
-            Save Draft
+            {isSaving ? t('irVisitForm.saveStatus.saving') : t('irVisitForm.buttons.saveDraft')}
           </button>
           <button onClick={handleSubmit} disabled={isSaving} style={{
             padding: '8px 16px', borderRadius: '8px', fontSize: '12px', fontWeight: '600',
@@ -455,7 +506,7 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
             background: '#A100FF', border: 'none', color: '#fff',
             ...(isMobile && { flex: 1 }),
           }}>
-            Submit Visit
+            {isSaving ? t('irVisitForm.saveStatus.saving') : t('irVisitForm.buttons.submitVisit')}
           </button>
         </div>
       </div>
@@ -483,10 +534,10 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
 
         <div style={{ display: 'flex', gap: isMobile ? '12px' : '20px', flexWrap: 'wrap', flex: 1 }}>
           {[
-            { label: 'Customer Code', value: irCode },
-            { label: 'IR Category',   value: apiIR?.kpis?.ir_category || '—' },
-            { label: 'IAM Status',    value: apiIR?.kpis?.iam_status  || '—' },
-            { label: 'Servicing Dealer', value: apiIR?.kpis?.servicing_dealer || '—' },
+            { label: t('irVisitForm.infoBar.customerCode'),    value: irCode },
+            { label: t('irVisitForm.infoBar.irCategory'),      value: apiIR?.kpis?.ir_category || '—' },
+            { label: t('irVisitForm.infoBar.iamStatus'),       value: apiIR?.kpis?.iam_status  || '—' },
+            { label: t('irVisitForm.infoBar.servicingDealer'), value: apiIR?.kpis?.servicing_dealer || '—' },
           ].map(({ label, value }) => (
             <div key={label}>
               <div style={{ fontSize: '9px', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</div>
@@ -500,7 +551,7 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
             onClick={() => navigate(`/dealer/${irId}`)}
             style={{ ...outlineBtn, border: '1.5px solid var(--border)', color: 'var(--text-primary)', fontSize: '12px', padding: '7px 12px' }}
           >
-            View IR Profile <ExternalLink size={11} />
+            {t('irVisitForm.buttons.viewIRProfile')} <ExternalLink size={11} />
           </button>
         )}
       </div>
@@ -519,7 +570,7 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
 
           {/* 1 ─ Sales Conversation Topics */}
           <SectionCard>
-            <SectionHeader number="1" title="Sales Conversation Topics" subtitle="Select all topics discussed during this visit." />
+            <SectionHeader number="1" title={t('irVisitForm.sections.1.title')} subtitle={t('irVisitForm.sections.1.subtitle')} />
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '7px' }}>
               {TOPICS.map(({ label, Icon }) => {
                 const sel = topics.includes(label);
@@ -533,7 +584,7 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
                     color: sel ? '#A100FF' : 'var(--text-secondary)',
                   }}>
                     <Icon size={12} />
-                    {label}
+                    {t(`irVisitForm.topics.${label.toLowerCase()}`)}
                     {sel && <span style={{ marginLeft: '2px', fontSize: '10px', color: '#A100FF' }}>✓</span>}
                   </button>
                 );
@@ -543,7 +594,7 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
               <div style={{ marginTop: '10px' }}>
                 <input
                   type="text" value={otherTopicText} onChange={(e) => setOtherTopicText(e.target.value)}
-                  placeholder="Describe the other topic discussed..."
+                  placeholder={t('irVisitForm.placeholders.otherTopic')}
                   style={{ ...inputStyle, fontSize: '12px' }}
                 />
               </div>
@@ -552,11 +603,11 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
 
           {/* 2 ─ Visit Notes */}
           <SectionCard>
-            <SectionHeader number="2" title="Visit Notes" subtitle="Add key notes or use voice capture." />
+            <SectionHeader number="2" title={t('irVisitForm.sections.2.title')} subtitle={t('irVisitForm.sections.2.subtitle')} />
             <div style={{ position: 'relative' }}>
               <textarea
                 value={visitNotes} onChange={(e) => setVisitNotes(e.target.value)}
-                placeholder="Type your visit notes here…"
+                placeholder={t('irVisitForm.placeholders.visitNotes')}
                 style={{
                   ...inputStyle, minHeight: '110px', resize: 'vertical',
                   paddingBottom: '40px', lineHeight: 1.5,
@@ -564,21 +615,61 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
               />
               <div style={{
                 position: 'absolute', bottom: '8px', left: '8px', right: '8px',
-                display: 'flex', gap: '6px',
+                display: 'flex', gap: '6px', flexWrap: 'wrap',
               }}>
-                <button type="button" style={outlineBtn}><Mic size={12} /> Record Voice Note</button>
-                <button type="button" style={{ ...outlineBtn, color: '#A100FF', borderColor: '#A100FF' }}>
-                  <Sparkles size={12} /> AI Assist
+                {preSummaryNotes !== null && (
+                  <button
+                    type="button"
+                    onClick={handleRevertSummary}
+                    style={{ ...outlineBtn, color: '#F59E0B', border: '1px solid #F59E0B' }}
+                  >
+                    {t('irVisitForm.buttons.revertSummary')}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={isRecording ? stopRecording : startRecording}
+                  disabled={isTranscribing || isSummarizing}
+                  style={{
+                    ...outlineBtn,
+                    border: isRecording ? '1px solid #EF4444' : outlineBtn.border,
+                    color: isRecording ? '#EF4444' : outlineBtn.color,
+                    opacity: (isTranscribing || isSummarizing) ? 0.6 : 1,
+                    cursor: (isTranscribing || isSummarizing) ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  <Mic size={12} />
+                  {isRecording ? t('irVisitForm.buttons.stopRecording') : isTranscribing ? t('irVisitForm.buttons.transcribing') : t('irVisitForm.buttons.recordVoice')}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSummarize}
+                  disabled={!visitNotes.trim() || isSummarizing || isRecording || isTranscribing}
+                  title={t('irVisitForm.buttons.summarize')}
+                  style={{
+                    ...outlineBtn, color: '#A100FF', borderColor: '#A100FF',
+                    cursor: (!visitNotes.trim() || isSummarizing || isRecording || isTranscribing) ? 'not-allowed' : 'pointer',
+                    opacity: (!visitNotes.trim() || isSummarizing || isRecording || isTranscribing) ? 0.5 : 1,
+                  }}
+                >
+                  <Sparkles size={12} />
+                  {isSummarizing ? t('irVisitForm.buttons.summarizing') : t('irVisitForm.buttons.summarize')}
                 </button>
               </div>
             </div>
+            {voiceError && (
+              <p style={{ margin: '5px 0 0', fontSize: '11px', color: '#EF4444' }}>{voiceError}</p>
+            )}
+            {summarizeError && (
+              <p style={{ margin: '5px 0 0', fontSize: '11px', color: '#EF4444' }}>{summarizeError}</p>
+            )}
           </SectionCard>
 
           {/* Contact Met */}
           <SectionCard>
-            <div style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '6px' }}>Contact Met</div>
+            <div style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '6px' }}>{t('irVisitForm.contactMet')}</div>
             <input type="text" value={contactMet} onChange={(e) => setContactMet(e.target.value)}
-              placeholder="e.g. David Brown (Owner)" style={inputStyle} />
+              placeholder={t('irVisitForm.placeholders.contactMet')} style={inputStyle} />
           </SectionCard>
 
           {/* 3 + 4 ─ Buying Behaviour + Competitor row */}
@@ -586,44 +677,43 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
 
             {/* 3 ─ Buying Behaviour */}
             <SectionCard>
-              <SectionHeader number="3" title="Buying Behaviour" subtitle="What best describes the IR's current buying pattern?" />
+              <SectionHeader number="3" title={t('irVisitForm.sections.3.title')} subtitle={t('irVisitForm.sections.3.subtitle')} />
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {BUYING_BEHAVIOURS.map((opt) => (
-                  <Radio key={opt} value={opt} selected={buyingBehaviour === opt} onChange={setBuyingBehaviour} />
+                  <Radio key={opt} value={opt} displayLabel={t(`irVisitForm.buyingBehaviour.${opt.toLowerCase().replace(/[\s/&]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '')}`)} selected={buyingBehaviour === opt} onChange={setBuyingBehaviour} />
                 ))}
               </div>
             </SectionCard>
 
             {/* 4 ─ Competitor / Lost Business Insight */}
             <SectionCard>
-              <SectionHeader number="4" title="Competitor / Lost Business Insight" subtitle="Any competitor activity or business lost?" />
+              <SectionHeader number="4" title={t('irVisitForm.sections.4.title')} subtitle={t('irVisitForm.sections.4.subtitle')} />
               <div style={{ display: 'flex', gap: '16px', marginBottom: '12px' }}>
-                {['Not Observed', 'Observed'].map((opt) => (
-                  <Radio key={opt} value={opt} selected={competitorMode === opt} onChange={setCompetitorMode} />
-                ))}
+                <Radio value="Not Observed" displayLabel={t('irVisitForm.competitor.notObserved')} selected={competitorMode === 'Not Observed'} onChange={setCompetitorMode} />
+                <Radio value="Observed"     displayLabel={t('irVisitForm.competitor.observed')}     selected={competitorMode === 'Observed'}     onChange={setCompetitorMode} />
               </div>
               {competitorMode === 'Observed' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                     <div>
-                      <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '3px' }}>Competitor</div>
+                      <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '3px' }}>{t('irVisitForm.competitor.labelCompetitor')}</div>
                       <select value={competitor} onChange={(e) => setCompetitor(e.target.value)} style={{ ...inputStyle }}>
-                        <option value="">Select…</option>
+                        <option value="">{t('irVisitForm.competitor.selectPlaceholder')}</option>
                         {COMPETITORS.map((c) => <option key={c}>{c}</option>)}
                       </select>
                     </div>
                     <div>
-                      <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '3px' }}>Category Lost</div>
+                      <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '3px' }}>{t('irVisitForm.competitor.labelCategoryLost')}</div>
                       <select value={categoryLost} onChange={(e) => setCategoryLost(e.target.value)} style={{ ...inputStyle }}>
-                        <option value="">Select…</option>
+                        <option value="">{t('irVisitForm.competitor.selectPlaceholder')}</option>
                         {CATEGORIES_LOST.map((c) => <option key={c}>{c}</option>)}
                       </select>
                     </div>
                   </div>
                   <div>
-                    <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '3px' }}>Reason</div>
+                    <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '3px' }}>{t('irVisitForm.competitor.labelReason')}</div>
                     <input type="text" value={competitorReason} onChange={(e) => setCompetitorReason(e.target.value)}
-                      placeholder="e.g. 20% discount on brake parts" style={{ ...inputStyle }} />
+                      placeholder={t('irVisitForm.placeholders.competitorReason')} style={{ ...inputStyle }} />
                   </div>
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '2px' }}>
                     {competitorPhoto ? (
@@ -637,7 +727,7 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
                           <span style={{
                             position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
                             justifyContent: 'center', fontSize: '9px', color: 'var(--text-primary)',
-                          }}>Uploading…</span>
+                          }}>{t('irVisitForm.buttons.uploading')}</span>
                         )}
                         {!photoUploading && (
                           <button type="button" onClick={() => { setCompetitorPhoto(null); setCompetitorPhotoUrl(''); setCompetitorPhotoKey(''); }} style={{
@@ -649,7 +739,7 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
                       </div>
                     ) : null}
                     <button type="button" onClick={() => photoRef.current?.click()} style={outlineBtn} disabled={photoUploading}>
-                      <Camera size={12} /> {photoUploading ? 'Uploading…' : competitorPhoto ? 'Change Photo' : 'Upload Photo'}
+                      <Camera size={12} /> {photoUploading ? t('irVisitForm.buttons.uploading') : competitorPhoto ? t('irVisitForm.buttons.changePhoto') : t('irVisitForm.buttons.uploadPhoto')}
                     </button>
                     <input ref={photoRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePhoto} />
                   </div>
@@ -665,17 +755,17 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
               <div>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: '5px' }}>
                   <span style={{ fontSize: '13px', fontWeight: '700', color: saleAchieved ? '#22C55E' : '#A100FF' }}>5.</span>
-                  <span style={{ fontSize: '13px', fontWeight: '600', color: saleAchieved ? '#22C55E' : 'var(--text-primary)' }}>Direct Sale Generated from This Visit</span>
+                  <span style={{ fontSize: '13px', fontWeight: '600', color: saleAchieved ? '#22C55E' : 'var(--text-primary)' }}>{t('irVisitForm.sections.5.title')}</span>
                 </div>
-                <p style={{ margin: '2px 0 0 17px', fontSize: '11px', color: 'var(--text-secondary)' }}>Record all parts ordered during or as a result of this visit.</p>
+                <p style={{ margin: '2px 0 0 17px', fontSize: '11px', color: 'var(--text-secondary)' }}>{t('irVisitForm.sections.5.subtitle')}</p>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-                <span style={{ fontSize: '12px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>Sale Achieved?</span>
+                <span style={{ fontSize: '12px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{t('irVisitForm.saleToggle.label')}</span>
                 <button type="button" onClick={() => setSaleAchieved((v) => !v)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, lineHeight: 0 }}>
                   {saleAchieved ? <ToggleRight size={28} color="#22C55E" /> : <ToggleLeft size={28} color="var(--text-muted)" />}
                 </button>
                 <span style={{ fontSize: '12px', fontWeight: '600', color: saleAchieved ? '#22C55E' : 'var(--text-muted)' }}>
-                  {saleAchieved ? 'Yes' : 'No'}
+                  {saleAchieved ? t('irVisitForm.saleToggle.yes') : t('irVisitForm.saleToggle.no')}
                 </span>
               </div>
             </div>
@@ -685,14 +775,14 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
               {/* Table */}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 52px 76px 28px' : '2fr 52px 76px 76px 96px 28px', gap: '5px', marginBottom: '5px', padding: '0 2px' }}>
-                  {(isMobile ? ['Product / Part Description', 'Qty', 'Total Value', ''] : ['Product / Part Description', 'Qty', 'Unit Price', 'Total Value', 'Invoice / Ref No.', '']).map((h) => (
+                  {(isMobile ? [t('irVisitForm.saleTable.colProduct'), t('irVisitForm.saleTable.colQty'), t('irVisitForm.saleTable.colTotalValue'), ''] : [t('irVisitForm.saleTable.colProduct'), t('irVisitForm.saleTable.colQty'), t('irVisitForm.saleTable.colUnitPrice'), t('irVisitForm.saleTable.colTotalValue'), t('irVisitForm.saleTable.colInvoiceRef'), '']).map((h) => (
                     <div key={h} style={{ fontSize: '9px', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</div>
                   ))}
                 </div>
 
                 {saleRows.map((row, i) => (
                   <div key={i} style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 52px 76px 28px' : '2fr 52px 76px 76px 96px 28px', gap: '5px', marginBottom: '5px', alignItems: 'center' }}>
-                    <input value={row.product}   onChange={(e) => updateSaleRow(i, 'product',   e.target.value)} placeholder="e.g. Brake Pads" style={inputStyle} />
+                    <input value={row.product}   onChange={(e) => updateSaleRow(i, 'product',   e.target.value)} placeholder={t('irVisitForm.placeholders.productDescription')} style={inputStyle} />
                     <input value={row.qty}       onChange={(e) => updateSaleRow(i, 'qty',       e.target.value)} placeholder="0" type="number" min="0" style={inputStyle} />
                     {!isMobile && <input value={row.unitPrice} onChange={(e) => updateSaleRow(i, 'unitPrice', e.target.value)} placeholder="€0.00" type="number" min="0" style={inputStyle} />}
                     <input value={row.totalValue} readOnly placeholder="€0.00" style={{ ...inputStyle, background: 'var(--surface-raised)', color: 'var(--text-secondary)' }} />
@@ -709,7 +799,7 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
                   fontSize: '12px', fontWeight: '500', cursor: 'pointer',
                   fontFamily: 'inherit', padding: '4px 0', marginTop: '2px',
                 }}>
-                  <Plus size={13} /> Add Product
+                  <Plus size={13} /> {t('irVisitForm.buttons.addProduct')}
                 </button>
               </div>
 
@@ -719,7 +809,7 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
                   width: isMobile ? '100%' : '148px', flexShrink: 0, padding: '12px 14px', borderRadius: '8px',
                   background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.3)',
                 }}>
-                  <div style={{ fontSize: '9px', fontWeight: '600', color: '#22C55E', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' }}>Total Order Value</div>
+                  <div style={{ fontSize: '9px', fontWeight: '600', color: '#22C55E', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' }}>{t('irVisitForm.saleTable.totalOrderValue')}</div>
                   <div style={{ fontSize: '22px', fontWeight: '700', color: '#22C55E', marginBottom: '8px' }}>
                     €{totalOrderValue.toFixed(0)}
                   </div>
@@ -729,7 +819,7 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
                       fontSize: '11px', fontWeight: '600', color: '#22C55E',
                       background: 'rgba(34,197,94,0.15)', padding: '4px 8px', borderRadius: '20px',
                     }}>
-                      ✓ Direct Sale Achieved
+                      ✓ {t('irVisitForm.saleTable.directSaleAchieved')}
                     </div>
                   )}
                 </div>
@@ -739,7 +829,7 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
 
           {/* 6 ─ Actions & Next Visit Planning */}
           <SectionCard>
-            <SectionHeader number="6" title="Actions & Next Visit Planning" subtitle="List actions and plan the next visit." />
+            <SectionHeader number="6" title={t('irVisitForm.sections.6.title')} subtitle={t('irVisitForm.sections.6.subtitle')} />
 
             {/* Actions table */}
             <div style={{
@@ -747,7 +837,10 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
               gridTemplateColumns: isMobile ? '1fr 100px 32px' : '1fr 110px 130px 110px 120px 32px',
               gap: '6px', marginBottom: '6px', padding: '0 2px',
             }}>
-              {(isMobile ? ['Action Required', 'Responsible', ''] : ['Action Required', 'Responsible', 'Due Date', 'Priority', 'Status', '']).map((h) => (
+              {(isMobile
+                ? [t('irVisitForm.actionsTable.colAction'), t('irVisitForm.actionsTable.colResponsible'), '']
+                : [t('irVisitForm.actionsTable.colAction'), t('irVisitForm.actionsTable.colResponsible'), t('irVisitForm.actionsTable.colDueDate'), t('irVisitForm.actionsTable.colPriority'), t('irVisitForm.actionsTable.colStatus'), '']
+              ).map((h) => (
                 <div key={h} style={{ fontSize: '9px', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</div>
               ))}
             </div>
@@ -759,10 +852,10 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
                 gap: '6px', marginBottom: '6px', alignItems: 'center',
               }}>
                 <input value={a.action} onChange={(e) => updateAction(i, 'action', e.target.value)}
-                  placeholder="Describe the action…" style={inputStyle} />
+                  placeholder={t('irVisitForm.placeholders.actionDescription')} style={inputStyle} />
                 <select value={a.responsible} onChange={(e) => updateAction(i, 'responsible', e.target.value)} style={inputStyle}>
                   <option value="">—</option>
-                  {RESPONSIBLE.map((r) => <option key={r}>{r}</option>)}
+                  {RESPONSIBLE.map((r) => <option key={r} value={r}>{t(`irVisitForm.responsible.${r.toLowerCase()}`)}</option>)}
                 </select>
                 {!isMobile && (
                   <>
@@ -770,10 +863,10 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
                     <select value={a.priority} onChange={(e) => updateAction(i, 'priority', e.target.value)}
                       style={{ ...inputStyle, color: a.priority ? priorityColor(a.priority) : 'var(--text-muted)' }}>
                       <option value="">—</option>
-                      {PRIORITIES.map((p) => <option key={p}>{p}</option>)}
+                      {PRIORITIES.map((p) => <option key={p} value={p}>{t(`irVisitForm.priorities.${p.toLowerCase()}`)}</option>)}
                     </select>
                     <select value={a.status} onChange={(e) => updateAction(i, 'status', e.target.value)} style={inputStyle}>
-                      {ACTION_STATUSES.map((s) => <option key={s}>{s}</option>)}
+                      {ACTION_STATUSES.map((s) => <option key={s} value={s}>{t(`irVisitForm.actionStatuses.${s === 'In Progress' ? 'inProgress' : s.toLowerCase()}`)}</option>)}
                     </select>
                   </>
                 )}
@@ -792,7 +885,7 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
               fontSize: '12px', fontWeight: '500', cursor: 'pointer',
               fontFamily: 'inherit', padding: '4px 0', marginTop: '2px',
             }}>
-              <Plus size={13} /> Add Another Action
+              <Plus size={13} /> {t('irVisitForm.buttons.addAnotherAction')}
             </button>
 
           </SectionCard>
@@ -800,32 +893,32 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
           {/* 7 ─ Visit Outcome */}
           <SectionCard>
             <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '10px' }}>
-              7. Visit Outcome
+              7. {t('irVisitForm.sections.7.title')}
             </div>
             <p style={{ margin: '0 0 10px', fontSize: '11px', color: 'var(--text-secondary)' }}>
-              What was the outcome of this visit?
+              {t('irVisitForm.sections.7.subtitle')}
             </p>
             <div style={{ display: 'flex', gap: '6px', marginBottom: '14px' }}>
               {VISIT_OUTCOMES.map((opt) => (
-                <button key={opt.label} type="button"
-                  onClick={() => setVisitOutcome(visitOutcome === opt.label ? '' : opt.label)}
+                <button key={opt.value} type="button"
+                  onClick={() => setVisitOutcome(visitOutcome === opt.value ? '' : opt.value)}
                   style={{
                     flex: 1, padding: '9px 4px', borderRadius: '8px',
                     fontSize: '10px', fontWeight: '600', cursor: 'pointer',
                     fontFamily: 'inherit', textAlign: 'center',
-                    border: `1.5px solid ${visitOutcome === opt.label ? opt.color : 'var(--border)'}`,
-                    background: visitOutcome === opt.label ? opt.bg : 'var(--surface-raised)',
-                    color: visitOutcome === opt.label ? opt.color : 'var(--text-secondary)',
+                    border: `1.5px solid ${visitOutcome === opt.value ? opt.color : 'var(--border)'}`,
+                    background: visitOutcome === opt.value ? opt.bg : 'var(--surface-raised)',
+                    color: visitOutcome === opt.value ? opt.color : 'var(--text-secondary)',
                     transition: 'all 0.15s',
                   }}>
-                  {opt.label}
+                  {t(`irVisitForm.visitOutcomes.${opt.tKey}`)}
                 </button>
               ))}
             </div>
-            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '6px' }}>New IRs identified in area?</div>
+            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '6px' }}>{t('irVisitForm.newIRs.label')}</div>
             <div style={{ display: 'flex', gap: '16px' }}>
-              <Radio value="No"                    selected={newIRsIdentified === 'No'}                    onChange={setNewIRsIdentified} />
-              <Radio value="Yes — added to CRM"    selected={newIRsIdentified === 'Yes — added to CRM'}    onChange={setNewIRsIdentified} />
+              <Radio value="No"                 displayLabel={t('irVisitForm.newIRs.no')}           selected={newIRsIdentified === 'No'}                 onChange={setNewIRsIdentified} />
+              <Radio value="Yes — added to CRM" displayLabel={t('irVisitForm.newIRs.yesAddedToCRM')} selected={newIRsIdentified === 'Yes — added to CRM'} onChange={setNewIRsIdentified} />
             </div>
           </SectionCard>
         </div>
@@ -842,10 +935,10 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
             {/* Panel header with tabs */}
             <div style={{ background: 'var(--surface)', padding: '12px 14px 0', flexShrink: 0 }}>
               <h2 style={{ margin: '0 0 2px', fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)' }}>
-                Visit Report (PDF Preview)
+                {t('irVisitForm.pdfPanel.title')}
               </h2>
               <p style={{ margin: '0 0 8px', fontSize: '10px', color: 'var(--text-secondary)' }}>
-                This is how your visit report will look.
+                {t('irVisitForm.pdfPanel.subtitle')}
               </p>
               <div style={{ display: 'flex', alignItems: 'flex-end', borderBottom: '1px solid var(--border)', gap: '2px' }}>
                 <button type="button" style={{
@@ -853,21 +946,21 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
                   borderBottom: '2px solid #A100FF', color: '#A100FF',
                   fontSize: '11px', fontWeight: '600', cursor: 'default',
                   fontFamily: 'inherit', marginBottom: '-1px',
-                }}>Preview</button>
+                }}>{t('irVisitForm.pdfPanel.preview')}</button>
                 <button type="button" onClick={handleDownloadPdf} style={{
                   display: 'flex', alignItems: 'center', gap: '4px',
                   padding: '5px 10px', border: 'none', background: 'none',
                   borderBottom: '2px solid transparent', color: 'var(--text-secondary)',
                   fontSize: '11px', fontWeight: '400', cursor: 'pointer',
                   fontFamily: 'inherit', marginBottom: '-1px',
-                }}>↓ Download PDF</button>
+                }}>{t('irVisitForm.pdfPanel.downloadPdf')}</button>
                 <button type="button" onClick={handlePrint} style={{
                   display: 'flex', alignItems: 'center', gap: '4px',
                   padding: '5px 10px', border: 'none', background: 'none',
                   borderBottom: '2px solid transparent', color: 'var(--text-secondary)',
                   fontSize: '11px', fontWeight: '400', cursor: 'pointer',
                   fontFamily: 'inherit', marginBottom: '-1px',
-                }}>⎙ Print</button>
+                }}>{t('irVisitForm.pdfPanel.print')}</button>
               </div>
             </div>
 

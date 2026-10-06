@@ -1,0 +1,543 @@
+{
+  "nav": {
+    "appName": "Intelligenter IAM Copilot",
+    "myTeam": "Mein Team",
+    "dealer": "Händler",
+    "ir": "IR",
+    "lightMode": "Zum hellen Modus wechseln",
+    "darkMode": "Zum dunklen Modus wechseln",
+    "viewOnly": "Nur Ansicht",
+    "profile": "Profil",
+    "logout": "Abmelden"
+  },
+  "dashboard": {
+    "greeting": "Guten Morgen, {{name}}",
+    "thisWeeksPlan": "Wochenplan",
+    "planMyDay": "Tag planen",
+    "kpi": {
+      "myDealers": "Meine Händler",
+      "openActions": "Offene Maßnahmen",
+      "salesVsTarget": "Umsatz vs. Ziel",
+      "pl24Adoption": "PL24-Nutzung",
+      "aosAdoption": "AOS-Nutzung",
+      "belowPurchaseTarget": "{{n}} unter 60 % Einkaufsziel",
+      "belowTarget": "{{n}} unter 60 % Ziel",
+      "atOrAboveTarget": "{{n}} am oder über dem Ziel",
+      "noPurchaseData": "Keine Einkaufsdaten",
+      "target80": "Ziel 80 %",
+      "target75": "Ziel 75 %"
+    },
+    "tabs": {
+      "myDealers": "Meine Händler",
+      "openActions": "Offene Maßnahmen"
+    },
+    "recommendedThisWeek": "Empfohlen für diese Woche",
+    "dropHint": "Zum Hinzufügen ablegen →",
+    "computingRecommendations": "Empfehlungen werden berechnet…",
+    "slotsFilled": "{{n}} von 3 Slots belegt · Besuch verschieben, um einen Slot freizugeben",
+    "emptyDropZone": "Händler hierher ziehen, um für heute zu planen",
+    "myDealerships": "Meine Händlerbetriebe",
+    "searchPlaceholder": "Nach Händlername oder Code suchen…",
+    "slotsAvailable": "{{n}} Slot verfügbar — Karte hochziehen oder + Heute planen klicken",
+    "slotsAvailable_plural": "{{n}} Slots verfügbar — Karte hochziehen oder + Heute planen klicken",
+    "postponeToFreeSlot": "Besuch oben verschieben, um einen Slot freizugeben",
+    "loadingDealers": "Händler werden geladen...",
+    "noResults": "Keine Händler entsprechen '{{query}}'",
+    "showTopOnly": "Nur erste {{n}} anzeigen ▲",
+    "showAll": "Alle {{n}} Händler anzeigen ▼",
+    "comingSoon": "Demnächst verfügbar",
+    "comingSoonSub": "Dieser Bereich befindet sich in der Entwicklung. Bitte schauen Sie bald wieder vorbei.",
+    "aiSuggestions": "KI-Vorschläge",
+    "aiSuggestionsSub": "Heute Morgen basierend auf Gebietsdaten aktualisiert",
+    "dealerCard": {
+      "lastVisit": "Letzter Besuch: {{date}}",
+      "postpone": "Verschieben ↷",
+      "planToday": "+ Heute planen",
+      "planTodayTooltip": "Besuch oben verschieben, um einen Slot freizugeben",
+      "startVisit": "Besuch starten →",
+      "viewDealership": "Händler anzeigen",
+      "purchaseRevTarget": "Einkaufsumsatz vs. Ziel",
+      "abc": "ABC",
+      "revYoY": "Umsatz JüJ",
+      "custYoY": "Kunden JüJ"
+    },
+    "weekPlan": {
+      "title": "Wochenplan",
+      "noVisits": "Keine Besuche geplant",
+      "today": "Heute",
+      "close": "Schließen"
+    },
+    "prioritization": {
+      "banner": "Intelligente Planung · Entscheiden Sie, wen Sie besuchen",
+      "kpiTiles": {
+        "revenueGap": "Umsatzlücke (unter Ziel)",
+        "churnRisk": "Abwanderungs-/Inaktivitätsrisiko",
+        "avgOpportunity": "Durchschnittlicher Opportunity-Score",
+        "overdueVisits": "Überfällige Besuche",
+        "lowCampaign": "Geringe Kampagnennutzung"
+      },
+      "kpiSubs": {
+        "revenueGap": "{{n}} von {{total}} Konten unter Ziel",
+        "churnRisk": "{{high}} HOCH · {{med}} MITTEL",
+        "avgOpportunity": "Top 12 Konten angezeigt",
+        "overdueVisits": "Hinter dem erwarteten Besuchsrhythmus",
+        "lowCampaign": "Aktive Kampagnen < 30 % Nutzung"
+      },
+      "abcBreakdown": "ABC-Segmentaufteilung",
+      "loadingApi": "Wird von API geladen…",
+      "liveApi": "Live · AWS API",
+      "fallbackCsv": "Fallback · CSV ({{error}})",
+      "abcMeta": {
+        "a": "Top-Umsatz — schützen & ausbauen",
+        "b": "Mittelsegment — entwickeln & aufsteigen",
+        "c": "Geringer Beitrag — qualifizieren oder entfernen"
+      },
+      "accounts": "{{n}} Konten",
+      "highRisk": "{{n}} HOHES Risiko",
+      "topCountry": "Top: {{country}}",
+      "tableHeaders": {
+        "rank": "Rang",
+        "account": "Konto",
+        "whyVisit": "Besuchsgrund",
+        "vsTarget": "vs. Ziel",
+        "yoy": "JüJ",
+        "dormancy": "Inaktivität",
+        "oppScore": "Opp.-Score",
+        "lastVisit": "Letzter Besuch",
+        "cadence": "Rhythmus"
+      },
+      "accountPriorityRanking": "Konto-Prioritätsranking",
+      "showTopOnly": "Nur Top 15 anzeigen ▲",
+      "showAllAccounts": "Alle {{n}} Konten anzeigen ▼",
+      "whyTags": {
+        "revenueGap": "Umsatzlücke",
+        "churnRisk": "Abwanderungsrisiko",
+        "watch": "Beobachten",
+        "decliningYoY": "Sinkender JüJ",
+        "overdue": "Überfällig",
+        "highOpp": "Hohe Chance"
+      }
+    },
+    "aiCards": {
+      "collapse": "Einklappen",
+      "viewDetail": "Details anzeigen",
+      "0": {
+        "title": "West Drive GmbH — AOS-Schulungsplatz nächste Woche verfügbar, Bestätigung ausstehend",
+        "desc": "Eine BMW TAK-Schulung zur AOS-Korbbewirtschaftung ist für den 18. März verfügbar. Der Händler hat die Teilnahme noch nicht bestätigt.",
+        "detail": "Beim letzten Besuch bei West Drive GmbH wurde festgestellt, dass Maria Bauer (Teilemanagerin) eine Auffrischung des AOS-Korbbewirtschaftungsmoduls benötigt — ihr fehlten zwei Teilefamilien (Kabinenfilter, Bremsflüssigkeit), die eigentlich im Februar hätten aufgenommen werden sollen. Ein BMW TAK-Schulungsplatz ist nächste Woche im Rahmen des regionalen T22-Zyklus verfügbar. Maria hat ihre Buchung noch nicht bestätigt. Wenn der Platz heute nicht bestätigt wird, ist die nächste verfügbare Sitzung erst im April."
+      },
+      "1": {
+        "title": "Omega Garage — 3 IR-Anfragen seit 48+ Stunden unbeantwortet, Antwort überfällig",
+        "desc": "Drei über Partslink24 an Omega Garage übermittelte Anfragen unabhängiger Reparaturbetriebe blieben seit über 48 Stunden unbeantwortet.",
+        "detail": "Drei über die Partslink24-Plattform an Omega Garage weitergeleitete IR-Teilenanfragen wurden seit mehr als 48 Stunden nicht anerkannt. Der Standard-SLA des BMW NSC für die Antwortzeit beträgt 2 Arbeitsstunden. Zwei der drei Anfragen betreffen die Verfügbarkeit von Bremsbelägen — eine Kategorie, die bereits als Lücke im AOS-Korb des Händlers identifiziert wurde. Die dritte ist eine Preisanfrage für Ölfilter. Unbeantwortete Anfragen riskieren, dass die IR bei einem konkurrierenden Nicht-OEM-Lieferanten bestellen und nicht zurückkehren. Marcus sollte dies direkt mit Anna Schmidt (Teilemanagerin) beim heutigen Besuch ansprechen und klären, wer täglich für die Überwachung des PL24-Anfrage-Posteingangs verantwortlich ist."
+      },
+      "2": {
+        "title": "BetaMS Garage — Besuch nächsten Donnerstag noch nicht mit Rick Richter bestätigt",
+        "desc": "Ein Folgebesuch bei BetaMS Garage ist bis zum 26. März fällig. Rick Richter wurde noch nicht benachrichtigt. Angesichts von 3 früheren Verschiebungen ist eine frühzeitige Bestätigung entscheidend.",
+        "detail": "Auf Basis des standardmäßigen 14-Tage-Rhythmus für Händler mit rückläufigen KPIs ist bei BetaMS Garage bis zum 26. März 2026 ein Folgebesuch fällig. Rick Richter hat die letzten drei Besuche verschoben — einschließlich des heutigen, für den drei separate Terminverschiebungen vor der Bestätigung erforderlich waren. Um eine Wiederholung zu vermeiden, sollte Marcus Hans direkt vor oder nach dem heutigen Besuch anrufen, um den 26.-März-Termin mündlich zu bestätigen und anschließend eine Kalendereinladung zu senden. Eine frühzeitige mündliche Zusage des Principals verringert die Wahrscheinlichkeit einer kurzfristigen Verschiebung erheblich. Wenn Hans ablehnt oder ausweicht, sollte dies dem NSC C1-DE-Team als formales Engagement-Risiko gemeldet werden, das einen Eingriff auf Programm-Ebene erfordert."
+      }
+    }
+  },
+  "team": {
+    "eyebrow": "Manager-Ansicht · {{date}} · Aktualisiert {{time}}",
+    "greeting": "{{greeting}}, {{name}}.",
+    "greetingMorning": "Guten Morgen",
+    "greetingAfternoon": "Guten Tag",
+    "greetingEvening": "Guten Abend",
+    "subLine": "Ihr autorisiertes Vertriebsmitarbeiter-Portfolio auf einen Blick.",
+    "myTeam": "Mein Team",
+    "sectionHeading": "Leistung der Vertriebsmitarbeiter",
+    "searchPlaceholder": "Mitarbeiter suchen",
+    "noResults": "Keine Vertriebsmitarbeiter gefunden",
+    "prev": "Zurück",
+    "next": "Weiter",
+    "page": "Seite {{n}} von {{m}}",
+    "viewReports": "Berichte anzeigen",
+    "kpiPanel": {
+      "dealer": "Händler",
+      "ir": "IR-Werkstätten"
+    },
+    "kpiLabels": {
+      "totalDealers": "Händler gesamt",
+      "tasksThisWeek": "Aufgaben diese Woche",
+      "tasksOverdue": "Überfällige Aufgaben",
+      "salesVsTarget": "Umsatz vs. Ziel",
+      "purchaseVsTarget": "Einkauf vs. Ziel",
+      "totalWorkshops": "Werkstätten gesamt",
+      "purchaseDeviation": "Einkaufsabweichung"
+    },
+    "managerKpis": {
+      "purchaseRevTarget": "Einkaufsumsatz vs. Ziel",
+      "abc": "ABC",
+      "revYoY": "Umsatz JüJ",
+      "custYoY": "Kunden JüJ"
+    },
+    "kpiPill": {
+      "maxSelected": "Maximal 2 KPIs auswählbar",
+      "deselect": "Abwählen",
+      "select": "Auswählen",
+      "clear": "Löschen",
+      "instruction": "Bis zu 2 KPIs auswählen — als",
+      "critical": "Kritisch",
+      "instructionSuffix": "markierte Händlerbetriebe werden in Ihrem Team hervorgehoben."
+    }
+  },
+  "language": {
+    "label": "Sprache",
+    "en": "English",
+    "de": "Deutsch",
+    "fr": "Français",
+    "zh": "中文"
+  },
+  "dealerBriefing": {
+    "loading": "Händlerdaten werden geladen...",
+    "error": "Fehler beim Laden des Händlers: {{error}}",
+    "badgeLabels": {
+      "high": "HOHE PRIORITÄT",
+      "med": "MITTLERE PRIORITÄT",
+      "low": "NIEDRIGE PRIORITÄT"
+    },
+    "visitScheduled": "Besuch geplant: Heute {{time}}",
+    "lastVisitLabel": "Letzter Besuch",
+    "kpiBar": {
+      "revAchievement": "Umsatzerreichung",
+      "abcTier": "ABC-Stufe",
+      "revYoY": "Umsatz JüJ",
+      "custYoY": "Kunden JüJ",
+      "hideKpis": "KPIs ausblenden ▲",
+      "viewFullKpis": "Alle KPIs anzeigen ▼"
+    },
+    "kpiTable": {
+      "colMetric": "Kennzahl",
+      "colActual": "Ist",
+      "colTarget": "Ziel",
+      "colNote": "Hinweis",
+      "metrics": {
+        "revVsTargetSales": "Umsatz vs. Ziel Verkauf",
+        "momSalesTrend": "MüM-Umsatztrend",
+        "abcSegment": "ABC-Segment",
+        "revVsTargetPurchase": "Umsatz vs. Ziel Einkauf",
+        "revYoyComp": "Umsatz JüJ-Vergleich",
+        "partsPurchaseYoY": "Teile-Einkauf JüJ",
+        "customerCountYoY": "Kundenanzahl JüJ",
+        "customerCountMoM": "Kundenanzahl MüM",
+        "activeIrClients": "Aktive IR-Kunden",
+        "openActions": "Offene Maßnahmen",
+        "lastPurchaseMonth": "Letzter Einkaufsmonat"
+      },
+      "targets": {
+        "positiveGe0": "Positiv (≥ 0 %)",
+        "within30Days": "Innerhalb der letzten 30 Tage"
+      },
+      "notes": {
+        "positiveMoM": "Positiver Monat-zu-Monat-Trend",
+        "slightDeclineMoM": "Geringer Monat-zu-Monat-Rückgang",
+        "significantDeclineMoM": "Erheblicher Monat-zu-Monat-Rückgang",
+        "noTrendData": "Keine Trenddaten",
+        "medianYoY": "Median JüJ über alle Produktkategorien",
+        "noYoYData": "Keine JüJ-Daten",
+        "noMoMData": "Keine MüM-Daten",
+        "noCustomerData": "Keine Kundendaten",
+        "distinctCustomers": "{{n}} einzelne Kunden",
+        "noOpenActions": "Derzeit keine offenen Maßnahmen",
+        "mostRecentPartsOrder": "Jüngste Teilebestellung",
+        "noPurchaseData": "Keine Einkaufsdaten",
+        "lastMonth": "Letzter Monat",
+        "ytdRevenue": "JTD-Umsatz: {{amount}}",
+        "ofTargetAchieved": "{{pct}} % des Ziels erreicht ({{month}})",
+        "growthParts": "LJ {{cy}} vs. VJ {{ly}} — {{pct}} % {{dir}}",
+        "growth": "Wachstum",
+        "decline": "Rückgang"
+      }
+    },
+    "aiSummary": {
+      "title": "KI-Zusammenfassung",
+      "cached": "Gecacht · {{date}}",
+      "analysing": "Wird analysiert...",
+      "regenerate": "Neu generieren",
+      "generate": "Zusammenfassung generieren",
+      "emptyState": "Klicken Sie auf „Zusammenfassung generieren“ für eine KI-gestützte Händler-Kurzanalyse",
+      "errorMsg": "Fehler beim Generieren der Zusammenfassung: {{error}}"
+    },
+    "lastVisit": {
+      "heading": "Letzter Besuch",
+      "openActionsForward": "Weitergeführte offene Maßnahmen:"
+    },
+    "topIssues": {
+      "title": "Wichtigste zu adressierende Probleme",
+      "loading": "Wird geladen…",
+      "cached": "Gecacht · {{date}}",
+      "generatingInsights": "Einblicke werden generiert…",
+      "noData": "Keine Problemdaten für diesen Händler verfügbar.",
+      "rootCause": "Grundursache: ",
+      "revenueImpact": "Gesch. Umsatzauswirkung: "
+    },
+    "aiPitch": {
+      "title": "KI-generierter Pitch",
+      "cached": "Gecacht · {{date}}",
+      "generating": "Wird generiert...",
+      "regenerate": "Neu generieren",
+      "generate": "Pitch generieren",
+      "emptyState": "Klicken Sie auf „Pitch generieren“ für einen personalisierten KI-Eröffnungspitch",
+      "errorMsg": "Fehler beim Generieren des Pitches: {{error}}"
+    },
+    "agenda": "Vorgeschlagene Agenda",
+    "captureVisit": "Besuch erfassen →"
+  },
+  "dealerVisitForm": {
+    "title": "Besuchserfassung",
+    "loading": "Wird geladen…",
+    "toggleDealer": "Händler",
+    "toggleIR": "IR",
+    "saveStatus": {
+      "draftRestored": "Entwurf wiederhergestellt",
+      "saved": "Entwurf gespeichert",
+      "submitted": "Eingereicht",
+      "failed": "Speichern fehlgeschlagen – erneut versuchen",
+      "autoSaved": "Automatisch gespeichert",
+      "saving": "Wird gespeichert…"
+    },
+    "buttons": {
+      "saveDraft": "Entwurf speichern",
+      "submitVisit": "Besuch einreichen",
+      "viewDealer": "Händler anzeigen",
+      "recordVoice": "Sprachnotiz aufnehmen",
+      "stopRecording": "Aufnahme stoppen",
+      "transcribing": "Wird transkribiert…",
+      "summarize": "Zusammenfassen",
+      "summarizing": "Wird zusammengefasst…",
+      "revertSummary": "↺ Original wiederherstellen",
+      "addAnotherAction": "Weitere Maßnahme hinzufügen",
+      "uploadPhoto": "Foto hochladen",
+      "addComment": "+ Kommentar hinzufügen",
+      "hideComment": "− Kommentar ausblenden",
+      "uploading": "Wird hochgeladen…"
+    },
+    "infoBar": {
+      "dealerCode": "Händlercode",
+      "lastVisit": "Letzter Besuch",
+      "openActions": "Offene Maßnahmen",
+      "performance": "Leistung",
+      "perfOnTrack": "Auf Kurs",
+      "perfMonitor": "Beobachten",
+      "perfAtRisk": "Gefährdet"
+    },
+    "sections": {
+      "1": { "title": "Was haben Sie besprochen?", "subtitle": "Wählen Sie alle während dieses Besuchs besprochenen Themen aus." },
+      "2": { "title": "Besuchsnotizen", "subtitle": "Fügen Sie wichtige Notizen hinzu oder nutzen Sie die Sprachaufnahme." },
+      "3": { "title": "Größte Herausforderung", "subtitle": "Was ist die Hauptherausforderung?" },
+      "4": { "title": "Größte Chance", "subtitle": "Was ist die größte Chance?" },
+      "5": { "title": "Wettbewerbsaktivität", "subtitle": "Wurde Wettbewerbsaktivität beobachtet?" },
+      "6": { "title": "Vereinbarte Maßnahmen", "subtitle": "Führen Sie die wichtigsten während dieses Besuchs vereinbarten Maßnahmen auf." },
+      "7": { "title": "Gesamtstatus des Besuchs", "subtitle": "Wie war der allgemeine Zustand dieses Besuchs?" }
+    },
+    "placeholders": {
+      "otherTopic": "Beschreiben Sie das andere Thema...",
+      "visitNotes": "Fügen Sie hier Ihre Besuchsnotizen hinzu...",
+      "selectChallenge": "Herausforderung auswählen...",
+      "selectOpportunity": "Chance auswählen...",
+      "competitorActivity": "Beschreiben Sie die Wettbewerbsaktivität...",
+      "enterAction": "Maßnahme eingeben"
+    },
+    "topics": {
+      "stock": "Bestand",
+      "delivery": "Lieferung",
+      "pl24": "PL24",
+      "aos": "AOS",
+      "marketing": "Marketing",
+      "competition": "Wettbewerb",
+      "pricing": "Preisgestaltung",
+      "reporting": "Berichtswesen",
+      "other": "Sonstiges"
+    },
+    "challenges": {
+      "stock_availability": "Lieferverfügbarkeit",
+      "delivery_issues": "Lieferprobleme",
+      "pl24_adoption": "PL24-Einführung",
+      "aos_compliance": "AOS-Konformität",
+      "competitor_pressure": "Wettbewerbsdruck",
+      "pricing_concerns": "Preisbedenken",
+      "training_needed": "Schulungsbedarf",
+      "other": "Sonstiges"
+    },
+    "opportunities": {
+      "increase_pl24_adoption": "PL24-Einführung steigern",
+      "expand_parts_range": "Teilesortiment erweitern",
+      "aos_upsell": "AOS-Upselling",
+      "fleet_conversion": "Flottenkonvertierung",
+      "workshop_upgrade": "Werkstatt-Upgrade",
+      "marketing_support": "Marketingunterstützung",
+      "other": "Sonstiges"
+    },
+    "owners": {
+      "dealer": "Händler",
+      "rep": "Rep",
+      "both": "Beide"
+    },
+    "priorities": {
+      "high": "Hoch",
+      "medium": "Mittel",
+      "low": "Niedrig"
+    },
+    "competitor": {
+      "notObserved": "Nicht beobachtet",
+      "observed": "Beobachtet"
+    },
+    "actionsTable": {
+      "colAction": "Maßnahme",
+      "colOwner": "Verantwortlich",
+      "colDueDate": "Fälligkeitsdatum",
+      "colPriority": "Priorität",
+      "ownerDefault": "Verantwortlich",
+      "priorityDefault": "Priorität"
+    },
+    "status": {
+      "good": "Gut",
+      "monitor": "Beobachten",
+      "needsSupport": "Unterstützung erforderlich"
+    },
+    "pdfPanel": {
+      "title": "Besuchsbericht (PDF-Vorschau)",
+      "subtitle": "So wird Ihr Besuchsbericht aussehen.",
+      "preview": "Vorschau",
+      "downloadPdf": "↓ PDF herunterladen",
+      "print": "⎙ Drucken"
+    }
+  },
+  "irVisitForm": {
+    "title": "IR-Besuchserfassung",
+    "loading": "Laden…",
+    "toggleDealer": "Händler",
+    "toggleIR": "IR",
+    "saveStatus": {
+      "draftRestored": "Entwurf wiederhergestellt",
+      "saved": "✓ Gespeichert",
+      "submitted": "✓ Eingereicht",
+      "failed": "Speichern fehlgeschlagen",
+      "saving": "Speichern…"
+    },
+    "buttons": {
+      "saveDraft": "Entwurf speichern",
+      "submitVisit": "Besuch einreichen",
+      "viewIRProfile": "IR-Profil anzeigen",
+      "recordVoice": "Sprachnotiz aufnehmen",
+      "stopRecording": "Aufnahme stoppen",
+      "transcribing": "Transkription…",
+      "summarize": "Zusammenfassen",
+      "summarizing": "Wird zusammengefasst…",
+      "revertSummary": "↺ Original wiederherstellen",
+      "addProduct": "Produkt hinzufügen",
+      "addAnotherAction": "Weitere Aktion hinzufügen",
+      "uploadPhoto": "Foto hochladen",
+      "changePhoto": "Foto ändern",
+      "uploading": "Hochladen…"
+    },
+    "infoBar": {
+      "customerCode": "Kundennummer",
+      "irCategory": "IR-Kategorie",
+      "iamStatus": "IAM-Status",
+      "servicingDealer": "Betreuender Händler"
+    },
+    "sections": {
+      "1": { "title": "Gesprächsthemen", "subtitle": "Wählen Sie alle während dieses Besuchs besprochenen Themen aus." },
+      "2": { "title": "Besuchsnotizen", "subtitle": "Fügen Sie wichtige Notizen hinzu oder nutzen Sie die Spracherfassung." },
+      "3": { "title": "Kaufverhalten", "subtitle": "Was beschreibt am besten das aktuelle Kaufverhalten des IR?" },
+      "4": { "title": "Wettbewerber / Verlorenes Geschäft", "subtitle": "Wurden Wettbewerberaktivitäten oder Geschäftsverluste beobachtet?" },
+      "5": { "title": "Direkter Verkauf aus diesem Besuch", "subtitle": "Erfassen Sie alle während oder infolge dieses Besuchs bestellten Teile." },
+      "6": { "title": "Aktionen & Planung des nächsten Besuchs", "subtitle": "Aktionen auflisten und den nächsten Besuch planen." },
+      "7": { "title": "Besuchsergebnis", "subtitle": "Was war das Ergebnis dieses Besuchs?" }
+    },
+    "placeholders": {
+      "otherTopic": "Beschreiben Sie das andere besprochene Thema...",
+      "visitNotes": "Geben Sie hier Ihre Besuchsnotizen ein…",
+      "contactMet": "z.B. David Brown (Inhaber)",
+      "competitorReason": "z.B. 20 % Rabatt auf Bremsbeläge",
+      "productDescription": "z.B. Bremsbeläge",
+      "actionDescription": "Aktion beschreiben…"
+    },
+    "topics": {
+      "pricing": "Preisgestaltung",
+      "stock availability": "Lagerfähigkeit",
+      "pl24": "PL24",
+      "delivery": "Lieferung",
+      "rewards program": "Prämienprogramm",
+      "technical support": "Technischer Support",
+      "competition": "Wettbewerb",
+      "marketing": "Marketing",
+      "warranty": "Garantie",
+      "other": "Sonstiges"
+    },
+    "contactMet": "Kontakt getroffen",
+    "visitType": {
+      "label": "Besuchsart",
+      "salesCall": "Verkaufsgespräch"
+    },
+    "buyingBehaviour": {
+      "regular_growing": "Regelmäßig & wachsend",
+      "captive_parts_only": "Nur Originalteile",
+      "buying_competitive_parts_elsewhere": "Kauft Fremdteile woanders",
+      "inconsistent_seasonal": "Unregelmäßig / saisonal"
+    },
+    "competitor": {
+      "notObserved": "Nicht beobachtet",
+      "observed": "Beobachtet",
+      "labelCompetitor": "Wettbewerber",
+      "labelCategoryLost": "Verlorene Kategorie",
+      "labelReason": "Grund",
+      "selectPlaceholder": "Auswählen…"
+    },
+    "saleToggle": {
+      "label": "Verkauf erzielt?",
+      "yes": "Ja",
+      "no": "Nein"
+    },
+    "saleTable": {
+      "colProduct": "Produkt / Teilebeschreibung",
+      "colQty": "Menge",
+      "colUnitPrice": "Einzelpreis",
+      "colTotalValue": "Gesamtwert",
+      "colInvoiceRef": "Rechnungs-/Ref.-Nr.",
+      "totalOrderValue": "Gesamtbestellwert",
+      "directSaleAchieved": "Direktverkauf erzielt"
+    },
+    "actionsTable": {
+      "colAction": "Erforderliche Aktion",
+      "colResponsible": "Verantwortlich",
+      "colDueDate": "Fälligkeitsdatum",
+      "colPriority": "Priorität",
+      "colStatus": "Status"
+    },
+    "responsible": {
+      "rep": "Rep",
+      "dealer": "Händler",
+      "both": "Beide"
+    },
+    "priorities": {
+      "high": "Hoch",
+      "medium": "Mittel",
+      "low": "Niedrig"
+    },
+    "actionStatuses": {
+      "open": "Offen",
+      "inProgress": "In Bearbeitung",
+      "closed": "Abgeschlossen"
+    },
+    "visitOutcomes": {
+      "orderGenerated": "Auftrag generiert",
+      "opportunityIdentified": "Chance erkannt",
+      "noProgress": "Kein Fortschritt"
+    },
+    "newIRs": {
+      "label": "Neue IRs in der Region identifiziert?",
+      "no": "Nein",
+      "yesAddedToCRM": "Ja — zum CRM hinzugefügt"
+    },
+    "pdfPanel": {
+      "title": "Besuchsbericht (PDF-Vorschau)",
+      "subtitle": "So wird Ihr Besuchsbericht aussehen.",
+      "preview": "Vorschau",
+      "downloadPdf": "↓ PDF herunterladen",
+      "print": "⎙ Drucken"
+    }
+  }
+}

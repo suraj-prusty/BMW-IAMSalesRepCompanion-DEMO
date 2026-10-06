@@ -1,5 +1,6 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { getTodayLong, getISOWeek, getWeekRangeLabel, getWeekDays } from '../utils/dateUtils';
 import {
   Map, ChevronDown, ChevronUp, X, ArrowRight,
@@ -15,6 +16,7 @@ import { api } from '../services/api';
 // ── Dealer Card ────────────────────────────────────────────
 function DealerCard({ dealer, isPlanned, onPostpone, onPlanToday, isDraggable, canPlan, isManager }) {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const handleClick = () => navigate(`/dealer/${dealer.id}`);
 
   const fmt = (v, decimals = 1) =>
@@ -89,7 +91,7 @@ function DealerCard({ dealer, isPlanned, onPostpone, onPlanToday, isDraggable, c
           )}
         </div>
         <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-          {dealer.location} · Last visit: {dealer.lastVisit}
+          {dealer.location} · {t('dashboard.dealerCard.lastVisit', { date: dealer.lastVisit })}
         </div>
       </div>
 
@@ -112,14 +114,14 @@ function DealerCard({ dealer, isPlanned, onPostpone, onPlanToday, isDraggable, c
             className="btn-secondary"
             style={{ whiteSpace: 'nowrap', fontSize: '12px', padding: '7px 12px', minHeight: 'unset', color: isManager ? undefined : 'var(--text-secondary)' }}
           >
-            Postpone ↷
+            {t('dashboard.dealerCard.postpone')}
           </button>
         ) : onPlanToday ? (
           <button
             onClick={(e) => { e.stopPropagation(); if (canPlan) onPlanToday?.(dealer.id); }}
             disabled={!canPlan || isManager}
             className="btn-secondary"
-            title={canPlan ? '' : 'Postpone a visit above to free a slot'}
+            title={canPlan ? '' : t('dashboard.dealerCard.planTodayTooltip')}
             style={{
               whiteSpace: 'nowrap', fontSize: '12px', padding: '7px 12px', minHeight: 'unset',
               color: canPlan && !isManager ? '#2d72de' : 'var(--text-muted)',
@@ -128,7 +130,7 @@ function DealerCard({ dealer, isPlanned, onPostpone, onPlanToday, isDraggable, c
               opacity: canPlan && !isManager ? 1 : 0.5,
             }}
           >
-            + Plan Today
+            {t('dashboard.dealerCard.planToday')}
           </button>
         ) : null}
         <button
@@ -136,7 +138,7 @@ function DealerCard({ dealer, isPlanned, onPostpone, onPlanToday, isDraggable, c
           className="btn-primary"
           style={{ whiteSpace: 'nowrap', fontSize: '12px', padding: '7px 14px', minHeight: 'unset' }}
         >
-          {isPlanned ? 'Start Visit →' : 'View Dealership'}
+          {isPlanned ? t('dashboard.dealerCard.startVisit') : t('dashboard.dealerCard.viewDealership')}
         </button>
       </div>
     </div>
@@ -147,6 +149,7 @@ function DealerCard({ dealer, isPlanned, onPostpone, onPlanToday, isDraggable, c
 const PRIORITY_DOT = { HIGH: '#EF4444', MED: '#F59E0B', LOW: '#22C55E' };
 
 function WeekPlanModal({ onClose, plannedDealers, otherDealers }) {
+  const { t } = useTranslation();
   const todayDate = new Date().getDate();
   const dow       = new Date().getDay();
   const todayIdx  = (dow >= 1 && dow <= 5) ? dow - 1 : 0;
@@ -173,7 +176,7 @@ function WeekPlanModal({ onClose, plannedDealers, otherDealers }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
           <div>
             <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: 'var(--text-primary)' }}>
-              📅 This Week's Plan
+              📅 {t('dashboard.weekPlan.title')}
             </h2>
             <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: 'var(--text-secondary)' }}>
               Week {getISOWeek()} · {getWeekRangeLabel()}
@@ -218,7 +221,7 @@ function WeekPlanModal({ onClose, plannedDealers, otherDealers }) {
               {/* Dealer list */}
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 {d.dealers.length === 0 ? (
-                  <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontStyle: 'italic' }}>No visits scheduled</span>
+                  <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontStyle: 'italic' }}>{t('dashboard.weekPlan.noVisits')}</span>
                 ) : d.dealers.map((dealer) => {
                   const dotColor = PRIORITY_DOT[dealer.priority] || '#2d72de';
                   const revFmt   = dealer.revenueVsTarget == null ? null
@@ -253,7 +256,7 @@ function WeekPlanModal({ onClose, plannedDealers, otherDealers }) {
                   background: 'rgba(45,114,222,0.15)', padding: '3px 10px',
                   borderRadius: '20px', whiteSpace: 'nowrap', alignSelf: 'flex-start',
                 }}>
-                  Today
+                  {t('dashboard.weekPlan.today')}
                 </span>
               )}
             </div>
@@ -261,7 +264,7 @@ function WeekPlanModal({ onClose, plannedDealers, otherDealers }) {
         </div>
 
         <button onClick={onClose} className="btn-primary" style={{ width: '100%', marginTop: '20px' }}>
-          Close
+          {t('dashboard.weekPlan.close')}
         </button>
       </div>
     </div>
@@ -806,6 +809,7 @@ function PlanMyDayModal({ onClose }) {
 // ── AI Suggestion Card ─────────────────────────────────────
 function AISuggestionCard({ icon, title, desc, detail }) {
   const [expanded, setExpanded] = useState(false);
+  const { t } = useTranslation();
   return (
     <div
       className="card"
@@ -836,7 +840,7 @@ function AISuggestionCard({ icon, title, desc, detail }) {
         </div>
       )}
       <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-        <span style={{ fontSize: '12px', color: '#2d72de' }}>{expanded ? 'Collapse' : 'View detail'}</span>
+        <span style={{ fontSize: '12px', color: '#2d72de' }}>{expanded ? t('dashboard.aiCards.collapse') : t('dashboard.aiCards.viewDetail')}</span>
         {expanded ? <ChevronUp size={12} color="#2d72de" /> : <ChevronDown size={12} color="#2d72de" />}
       </div>
     </div>
@@ -848,6 +852,7 @@ function AISuggestionCard({ icon, title, desc, detail }) {
 // dormancy_risk = derived label (HIGH/MED/LOW), dormancy_score = raw 0–100
 function PriorityDealerRow({ dealer, rank }) {
   const navigate   = useNavigate();
+  const { t } = useTranslation();
   // 55 accounts: top 3 = red, 4-12 = amber, rest = green
   const rankColor  = rank <= 3 ? '#EF4444' : rank <= 12 ? '#F59E0B' : '#22C55E';
   const borderBase = rank <= 3 ? 'rgba(239,68,68,0.2)' : rank <= 12 ? 'rgba(245,158,11,0.12)' : '#252E50';
@@ -855,17 +860,17 @@ function PriorityDealerRow({ dealer, rank }) {
   // "Why visit" tags — thresholds calibrated to real data ranges
   const reasons = [];
   if (dealer.target_achievement_pct < -20)
-    reasons.push({ label: 'Revenue Gap',   color: '#EF4444', bg: 'rgba(239,68,68,0.1)' });
+    reasons.push({ label: t('dashboard.prioritization.whyTags.revenueGap'),   color: '#EF4444', bg: 'rgba(239,68,68,0.1)' });
   if (dealer.dormancy_risk === 'HIGH')
-    reasons.push({ label: 'Churn Risk',    color: '#EF4444', bg: 'rgba(239,68,68,0.1)' });
+    reasons.push({ label: t('dashboard.prioritization.whyTags.churnRisk'),    color: '#EF4444', bg: 'rgba(239,68,68,0.1)' });
   else if (dealer.dormancy_risk === 'MED')
-    reasons.push({ label: 'Watch',         color: '#F59E0B', bg: 'rgba(245,158,11,0.1)' });
+    reasons.push({ label: t('dashboard.prioritization.whyTags.watch'),        color: '#F59E0B', bg: 'rgba(245,158,11,0.1)' });
   if (dealer.yoy_growth_pct < -10)
-    reasons.push({ label: 'Declining YoY', color: '#F59E0B', bg: 'rgba(245,158,11,0.1)' });
+    reasons.push({ label: t('dashboard.prioritization.whyTags.decliningYoY'), color: '#F59E0B', bg: 'rgba(245,158,11,0.1)' });
   if (dealer.cadence_overdue_ratio > 1)
-    reasons.push({ label: 'Overdue',       color: '#2d72de', bg: 'rgba(45,114,222,0.1)' });
+    reasons.push({ label: t('dashboard.prioritization.whyTags.overdue'),      color: '#2d72de', bg: 'rgba(45,114,222,0.1)' });
   if (dealer.opportunity_score > 70 && reasons.length < 2)
-    reasons.push({ label: 'High Opp',      color: '#22C55E', bg: 'rgba(34,197,94,0.1)' });
+    reasons.push({ label: t('dashboard.prioritization.whyTags.highOpp'),      color: '#22C55E', bg: 'rgba(34,197,94,0.1)' });
 
   // Colour thresholds: achievement is (actual-target)/target*100 — negative means under target
   const revColor  = dealer.target_achievement_pct >= 0 ? '#22C55E' : dealer.target_achievement_pct >= -20 ? '#F59E0B' : '#EF4444';
@@ -1047,6 +1052,7 @@ function KpiInfoTooltip({ rows, columns }) {
 
 // ── Prioritization View ────────────────────────────────────
 function PrioritizationView({ accountFilter, showAll, setShowAll }) {
+  const { t } = useTranslation();
   const allDealers = dataService.getPrioritizedDealers();
 
   const [abcApiData,    setAbcApiData]    = useState(null);
@@ -1143,7 +1149,7 @@ function PrioritizationView({ accountFilter, showAll, setShowAll }) {
 
   const summaryKpis = [
     {
-      label: 'Revenue Gap (Under-Target)', value: fmt(totalGap),
+      label: t('dashboard.prioritization.kpiTiles.revenueGap'), value: fmt(totalGap),
       sub: `${underTarget.length} of ${allDealers.length} accounts below target`, subColor: '#EF4444',
       icon: <TrendingDown size={22} color="#2d72de" />,
       tooltipRows: revenueGapRows,
@@ -1157,7 +1163,7 @@ function PrioritizationView({ accountFilter, showAll, setShowAll }) {
       ],
     },
     {
-      label: 'Churn / Dormancy Risk', value: `${riskCount} Accounts`,
+      label: t('dashboard.prioritization.kpiTiles.churnRisk'), value: `${riskCount} Accounts`,
       sub: `${allDealers.filter((d) => d.dormancy_risk === 'HIGH').length} HIGH · ${allDealers.filter((d) => d.dormancy_risk === 'MED').length} MED`,
       subColor: '#EF4444', icon: <AlertTriangle size={22} color="#2d72de" />,
       tooltipRows: dormancyRows,
@@ -1171,7 +1177,7 @@ function PrioritizationView({ accountFilter, showAll, setShowAll }) {
       ],
     },
     {
-      label: 'Avg Opportunity Score', value: `${avgOpp} / 100`,
+      label: t('dashboard.prioritization.kpiTiles.avgOppScore'), value: `${avgOpp} / 100`,
       sub: `Top 12 accounts shown`, subColor: '#F59E0B',
       icon: <Zap size={22} color="#2d72de" />,
       tooltipRows: topOppRows,
@@ -1184,7 +1190,7 @@ function PrioritizationView({ accountFilter, showAll, setShowAll }) {
       ],
     },
     {
-      label: 'Overdue Visits', value: `${overdueCount} Accounts`,
+      label: t('dashboard.prioritization.kpiTiles.overdueVisits'), value: `${overdueCount} Accounts`,
       sub: 'Behind expected visit cadence', subColor: '#F59E0B',
       icon: <ClipboardList size={22} color="#2d72de" />,
       tooltipRows: overdueRows,
@@ -1199,7 +1205,7 @@ function PrioritizationView({ accountFilter, showAll, setShowAll }) {
       ],
     },
     {
-      label: 'Low Campaign Adoption', value: `${lowAdoptionAccts.length} Accounts`,
+      label: t('dashboard.prioritization.kpiTiles.lowCampaignAdoption'), value: `${lowAdoptionAccts.length} Accounts`,
       sub: 'Active campaigns < 30% adoption', subColor: '#F59E0B',
       icon: <Activity size={22} color="#2d72de" />,
       tooltipRows: lowAdoptionAccts,
@@ -1224,7 +1230,7 @@ function PrioritizationView({ accountFilter, showAll, setShowAll }) {
         display: 'flex', alignItems: 'flex-start', gap: '20px', flexWrap: 'wrap',
       }}>
         <div style={{ fontSize: '11px', color: '#2d72de', fontWeight: '700', whiteSpace: 'nowrap', paddingTop: '1px' }}>
-          Intelligent Planning · Decide who to visit
+          {t('dashboard.prioritization.banner')}
         </div>
         <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', flex: 1 }}>
           <div style={{ fontSize: '11px', color: 'var(--text-muted)', lineHeight: 1.6 }}>
@@ -1261,16 +1267,16 @@ function PrioritizationView({ accountFilter, showAll, setShowAll }) {
 
       {/* ABC segment breakdown — counts + totals (55 accounts, names would overflow) */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-        <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)' }}>ABC Segment Breakdown</span>
-        {abcApiLoading && <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Loading from API…</span>}
+        <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)' }}>{t('dashboard.prioritization.abcBreakdown')}</span>
+        {abcApiLoading && <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{t('dashboard.prioritization.loadingFromApi')}</span>}
         {!abcApiLoading && abcFromApi && (
           <span style={{ fontSize: '10px', color: '#22C55E', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.25)', borderRadius: '3px', padding: '1px 6px' }}>
-            Live · AWS API
+            {t('dashboard.prioritization.liveAwsApi')}
           </span>
         )}
         {!abcApiLoading && abcApiError && (
           <span style={{ fontSize: '10px', color: '#F59E0B', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: '3px', padding: '1px 6px' }}>
-            Fallback · CSV ({abcApiError})
+            {t('dashboard.prioritization.fallbackCsv')} ({abcApiError})
           </span>
         )}
       </div>
@@ -1321,7 +1327,7 @@ function PrioritizationView({ accountFilter, showAll, setShowAll }) {
       {/* Priority ranking header */}
       <div style={{ marginBottom: '12px' }}>
         <div style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '3px' }}>
-          Account Priority Ranking
+          {t('dashboard.prioritization.accountPriorityRanking')}
         </div>
         <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
           Score: Revenue Gap (35%) · Dormancy 0–100 (25%) · Opportunity (20%) · YoY Decline (10%) · Visit Overdue (10%)
@@ -1337,15 +1343,15 @@ function PrioritizationView({ accountFilter, showAll, setShowAll }) {
         textTransform: 'uppercase', letterSpacing: '0.06em',
         borderBottom: '1px solid var(--border)', marginBottom: '8px',
       }}>
-        <div>Rank</div>
-        <div>Account</div>
-        <div>Why Visit</div>
-        <div style={{ textAlign: 'center' }}>vs Target</div>
-        <div style={{ textAlign: 'center' }}>YoY</div>
-        <div style={{ textAlign: 'center' }}>Dormancy</div>
-        <div style={{ textAlign: 'center' }}>Opp Score</div>
-        <div style={{ textAlign: 'center' }}>Last Visit</div>
-        <div style={{ textAlign: 'center' }}>Cadence</div>
+        <div>{t('dashboard.prioritization.tableHeaders.rank')}</div>
+        <div>{t('dashboard.prioritization.tableHeaders.account')}</div>
+        <div>{t('dashboard.prioritization.tableHeaders.whyVisit')}</div>
+        <div style={{ textAlign: 'center' }}>{t('dashboard.prioritization.tableHeaders.vsTarget')}</div>
+        <div style={{ textAlign: 'center' }}>{t('dashboard.prioritization.tableHeaders.yoy')}</div>
+        <div style={{ textAlign: 'center' }}>{t('dashboard.prioritization.tableHeaders.dormancy')}</div>
+        <div style={{ textAlign: 'center' }}>{t('dashboard.prioritization.tableHeaders.oppScore')}</div>
+        <div style={{ textAlign: 'center' }}>{t('dashboard.prioritization.tableHeaders.lastVisit')}</div>
+        <div style={{ textAlign: 'center' }}>{t('dashboard.prioritization.tableHeaders.cadence')}</div>
       </div>
 
       {displayed.map((d, i) => <PriorityDealerRow key={d.account_id} dealer={d} rank={i + 1} />)}
@@ -1361,7 +1367,7 @@ function PrioritizationView({ accountFilter, showAll, setShowAll }) {
             cursor: 'pointer', fontFamily: 'inherit', fontWeight: '600',
           }}
         >
-          {showAll ? `Show top 15 only ▲` : `Show all ${filtered.length} accounts ▼`}
+          {showAll ? t('dashboard.prioritization.showTopOnly') : t('dashboard.prioritization.showAllAccounts', { n: filtered.length })}
         </button>
       )}
 
@@ -1517,6 +1523,7 @@ function normalizeApiDealer(raw) {
 
 // ── Main Dashboard ─────────────────────────────────────────
 export default function Dashboard() {
+  const { t } = useTranslation();
   const isManager = api.isManager();
   const currentUser = api.getUser();
   const [activeTab,      setActiveTab]      = useState('dealers');
@@ -1526,21 +1533,6 @@ export default function Dashboard() {
   const [showAll,        setShowAll]        = useState(false);
   const [apiDealers,     setApiDealers]     = useState([]);
   const [dealersLoading, setDealersLoading] = useState(true);
-
-  // Default recommended dealers: segment B dealers where M2 achievement < 60%
-  const recommendedDealers = apiDealers
-    .filter((d) => {
-      if (d.abcSegment !== 'B') return false;
-      const purchaseUnder =
-        (d.purchaseAchvPct != null && d.purchaseAchvPct < 60) ||
-        (d.targetType === 'purchase' && d.revenueVsTarget != null && d.revenueVsTarget < -40);
-      const salesUnder =
-        (d.saleAchvPct != null && d.saleAchvPct < 60) ||
-        (d.targetType === 'sales' && d.revenueVsTarget != null && d.revenueVsTarget < -40);
-      return purchaseUnder || salesUnder;
-    })
-    .sort((a, b) => a.revenueVsTarget - b.revenueVsTarget)
-    .slice(0, 3);
 
   useEffect(() => {
     api.getDealers()
@@ -1565,6 +1557,28 @@ export default function Dashboard() {
   const ALL_DEMO_DEALER_CODES = new Set([...MARCUS_DEALER_CODES, ...SOFIA_DEALER_CODES]);
 
   const managerSelectedRepId = isManager ? sessionStorage.getItem('managerSelectedRepId') : null;
+
+  // KPIs selected by manager in TeamSelect — used to filter "Recommended this week"
+  const managerSelectedKpis = useMemo(() => {
+    if (!isManager) return new Set();
+    try {
+      const raw = sessionStorage.getItem('managerSelectedKpis');
+      return raw ? new Set(JSON.parse(raw)) : new Set();
+    } catch { return new Set(); }
+  }, [isManager]);
+
+  // Returns true if a dealer is "critical" for a given manager KPI
+  // abc: critical means segment A (top-tier — protect & grow)
+  // others: critical means underperforming (below target / declining)
+  const isManagerCritical = (kpiName, dealer) => {
+    switch (kpiName) {
+      case 'purchaseRevVsTarget': return dealer.revenueVsTarget != null && dealer.revenueVsTarget < 0;
+      case 'revYoY':             return dealer.yoyGrowth != null && dealer.yoyGrowth < 0;
+      case 'custMoM':            return dealer.customerMoM != null && dealer.customerMoM < 0;
+      case 'abc':                return dealer.abcSegment === 'A';
+      default:                   return false;
+    }
+  };
   const repId =
     managerSelectedRepId === 'marcus-schmidt' ? 'marcus' :
     managerSelectedRepId === 'sofia-keller'   ? 'sofia'  :
@@ -1576,6 +1590,30 @@ export default function Dashboard() {
     ALL_DEMO_DEALER_CODES;
 
   const demoDealers = apiDealers.filter(d => activeDealerCodes.has(String(d.dealer_code)));
+
+  // Recommended dealers filtered by manager's KPI selection (when active) or default B-segment rule
+  const recommendedDealers = useMemo(() => {
+    const base = demoDealers.length > 0 ? demoDealers : apiDealers;
+    if (managerSelectedKpis.size > 0) {
+      return base
+        .filter((d) => [...managerSelectedKpis].every((kpi) => isManagerCritical(kpi, d)))
+        .sort((a, b) => a.revenueVsTarget - b.revenueVsTarget)
+        .slice(0, 3);
+    }
+    return base
+      .filter((d) => {
+        if (d.abcSegment !== 'B') return false;
+        const purchaseUnder =
+          (d.purchaseAchvPct != null && d.purchaseAchvPct < 60) ||
+          (d.targetType === 'purchase' && d.revenueVsTarget != null && d.revenueVsTarget < -40);
+        const salesUnder =
+          (d.saleAchvPct != null && d.saleAchvPct < 60) ||
+          (d.targetType === 'sales' && d.revenueVsTarget != null && d.revenueVsTarget < -40);
+        return purchaseUnder || salesUnder;
+      })
+      .sort((a, b) => a.revenueVsTarget - b.revenueVsTarget)
+      .slice(0, 3);
+  }, [apiDealers, demoDealers, managerSelectedKpis]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Seed "Recommended for Today" from auto-recommendations once API data arrives
   useEffect(() => {
@@ -1615,33 +1653,33 @@ export default function Dashboard() {
 
   const territoryKpis = [
     {
-      label:    'My Dealers',
+      label:    t('dashboard.kpi.myDealers'),
       value:    dealersLoading ? '…' : String(demoDealers.length),
-      sub:      dealersLoading ? '' : `${belowTarget} below 60% purchase target`,
+      sub:      dealersLoading ? '' : t('dashboard.kpi.belowPurchaseTarget', { n: belowTarget }),
       subColor: '#F59E0B',
       icon:     <Users size={24} color="#2d72de" />,
     },
     {
-      label:    'Open Actions',
+      label:    t('dashboard.kpi.openActions'),
       value:    dealersLoading ? '…' : String(belowTarget),
-      sub:      dealersLoading ? '' : `${belowTarget} below 60% target`,
+      sub:      dealersLoading ? '' : t('dashboard.kpi.belowPurchaseTarget', { n: belowTarget }),
       subColor: '#EF4444',
       icon:     <CheckSquare size={24} color="#2d72de" />,
     },
     {
-      label:    'Sales vs Target',
+      label:    t('dashboard.kpi.salesVsTarget'),
       value:    dealersLoading ? '…' : avgPurchaseAchv != null ? `${avgPurchaseAchv}%` : '—',
       sub:      dealersLoading ? '' : avgPurchaseAchv != null ? `${aboveTarget} at or above target` : 'No purchase data',
       subColor: avgPurchaseAchv != null && avgPurchaseAchv >= 100 ? '#22C55E' : '#F59E0B',
       icon:     <Target size={24} color="#2d72de" />,
     },
-    { label: 'PL24 Adoption', value: '72%', sub: 'Target 80%', subColor: '#F59E0B', icon: <BarChart2 size={24} color="#2d72de" /> },
-    { label: 'AOS Adoption',  value: '65%', sub: 'Target 75%', subColor: '#F59E0B', icon: <Activity size={24} color="#2d72de" /> },
+    { label: t('dashboard.kpi.pl24Adoption'), value: '72%', sub: 'Target 80%', subColor: '#F59E0B', icon: <BarChart2 size={24} color="#2d72de" /> },
+    { label: t('dashboard.kpi.aosAdoption'),  value: '65%', sub: 'Target 75%', subColor: '#F59E0B', icon: <Activity size={24} color="#2d72de" /> },
   ];
 
   const tabs = [
-    { id: 'dealers', label: 'My Dealers' },
-    { id: 'actions', label: 'Open Actions' },
+    { id: 'dealers', label: t('dashboard.tabs.myDealers') },
+    { id: 'actions', label: t('dashboard.tabs.openActions') },
   ];
 
   return (
@@ -1661,7 +1699,7 @@ export default function Dashboard() {
       }}>
         <div>
           <h1 style={{ margin: 0, fontSize: '26px', fontWeight: '700', color: 'var(--text-primary)', letterSpacing: '-0.01em' }}>
-            Good Morning, {currentUser?.name?.split(' ')[0] ?? 'Marcus'} 👋
+            {t('dashboard.greeting', { name: currentUser?.name?.split(' ')[0] ?? 'Marcus' })} 👋
           </h1>
           <p style={{ margin: '6px 0 0 0', fontSize: '13px', color: 'var(--text-secondary)' }}>
             {getTodayLong()} · C1 Europe · Week {getISOWeek()}
@@ -1673,7 +1711,7 @@ export default function Dashboard() {
             className="btn-secondary"
             style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', padding: '9px 16px', minHeight: 'unset' }}
           >
-            📅 This Week's Plan
+            {`📅 ${t('dashboard.thisWeeksPlan')}`}
           </button>
           <button
             onClick={() => setShowPlanDay(true)}
@@ -1681,7 +1719,7 @@ export default function Dashboard() {
             className="btn-primary"
             style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', padding: '9px 16px', minHeight: 'unset' }}
           >
-            <Map size={14} /> Plan My Day
+            <Map size={14} /> {t('dashboard.planMyDay')}
           </button>
         </div>
       </div>
@@ -1760,27 +1798,27 @@ export default function Dashboard() {
               borderLeft: '3px solid #A100FF', paddingLeft: '10px',
               marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px',
             }}>
-              Recommended for this week
+              {t('dashboard.recommendedThisWeek')}
               {dragOver && (
                 <span style={{ fontSize: '10px', color: '#2d72de', fontWeight: '500', textTransform: 'none', letterSpacing: 0 }}>
-                  Drop to add →
+                  {t('dashboard.dropHint')}
                 </span>
               )}
             </div>
             <div style={{ fontSize: '11px', color: 'var(--text-muted)', paddingLeft: '13px', marginBottom: '14px' }}>
-              {dealersLoading ? 'Computing recommendations…'
-                : `${plannedDealers.length} of 3 slots filled · Postpone a visit to free a slot`}
+              {dealersLoading ? t('dashboard.computingRecommendations')
+                : t('dashboard.slotsFilled', { n: plannedDealers.length })}
             </div>
             {dealersLoading ? (
               <div style={{ padding: '16px', color: 'var(--text-secondary)', fontSize: '13px' }}>
-                Computing recommendations…
+                {t('dashboard.computingRecommendations')}
               </div>
             ) : plannedDealers.length === 0 ? (
               <div style={{
                 border: '2px dashed var(--border)', borderRadius: '8px', padding: '24px',
                 textAlign: 'center', color: '#505050', fontSize: '13px',
               }}>
-                Drag a dealership here to plan for today
+                {t('dashboard.emptyDropZone')}
               </div>
             ) : (
               plannedDealers.map((d) => (
@@ -1803,12 +1841,12 @@ export default function Dashboard() {
                 letterSpacing: '0.1em', textTransform: 'uppercase',
                 borderLeft: '3px solid #3A3A3A', paddingLeft: '10px',
               }}>
-                My Dealerships
+                {t('dashboard.myDealerships')}
               </div>
               <div style={{ position: 'relative', flexShrink: 0 }}>
                 <input
                   type="text"
-                  placeholder="Search by dealer name or code…"
+                  placeholder={t('dashboard.searchPlaceholder')}
                   value={dealerSearch}
                   onChange={(e) => setDealerSearch(e.target.value)}
                   style={{
@@ -1839,12 +1877,12 @@ export default function Dashboard() {
             </div>
             <div style={{ fontSize: '11px', color: canPlanMore ? '#A100FF' : '#8090B0', paddingLeft: '13px', marginBottom: '12px' }}>
               {canPlanMore
-                ? `${3 - plannedDealers.length} slot${3 - plannedDealers.length !== 1 ? 's' : ''} available — drag a card up or click + Plan Today`
-                : 'Postpone a visit above to free a slot'}
+                ? t('dashboard.slotsAvailable', { n: 3 - plannedDealers.length })
+                : t('dashboard.postponeToFreeSlot')}
             </div>
             {dealersLoading ? (
               <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-secondary)', fontSize: '13px' }}>
-                Loading dealers...
+                {t('dashboard.loadingDealers')}
               </div>
             ) : (
               <>
@@ -1854,7 +1892,7 @@ export default function Dashboard() {
                 ))}
                 {searchedDealers.length === 0 && dealerSearch && (
                   <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)', fontSize: '13px' }}>
-                    No dealers match "{dealerSearch}"
+                    {t('dashboard.noResults', { query: dealerSearch })}
                   </div>
                 )}
                 {searchedDealers.length > DEALER_PAGE_SIZE && (
@@ -1868,8 +1906,8 @@ export default function Dashboard() {
                     }}
                   >
                     {showAllDealers
-                      ? `Show first ${DEALER_PAGE_SIZE} only ▲`
-                      : `Show all ${searchedDealers.length} dealers ▼`}
+                      ? t('dashboard.showTopOnly', { n: DEALER_PAGE_SIZE })
+                      : t('dashboard.showAll', { n: searchedDealers.length })}
                   </button>
                 )}
               </>
@@ -1885,9 +1923,9 @@ export default function Dashboard() {
           style={{ textAlign: 'center', padding: '48px', color: 'var(--text-secondary)' }}
         >
           <div style={{ fontSize: '32px', marginBottom: '12px' }}>🚧</div>
-          <div style={{ fontSize: '16px', fontWeight: '600', color: 'var(--text-primary)' }}>Coming soon</div>
+          <div style={{ fontSize: '16px', fontWeight: '600', color: 'var(--text-primary)' }}>{t('dashboard.comingSoon')}</div>
           <div style={{ fontSize: '13px', marginTop: '6px' }}>
-            This section is under development. Check back soon.
+            {t('dashboard.comingSoonSub')}
           </div>
         </div>
       )}
@@ -1898,32 +1936,27 @@ export default function Dashboard() {
           <div style={{ width: '3px', height: '20px', background: '#A100FF', borderRadius: '2px', flexShrink: 0 }} />
           <div>
             <h2 style={{ margin: 0, fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)', letterSpacing: '0.01em' }}>
-              AI Suggestions
+              {t('dashboard.aiSuggestions')}
             </h2>
             <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
-              Updated this morning based on territory data
+              {t('dashboard.aiSuggestionsSub')}
             </p>
           </div>
         </div>
         <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-          <AISuggestionCard
-            icon="📚"
-            title="West Drive GmbH — AOS Training Slot Available Next Week, Confirmation Pending"
-            desc="A BMW TAK training session for AOS Basket Management is open for 18 March. Dealer has not yet confirmed attendance."
-            detail="During the last visit at West Drive GmbH, Maria Bauer (Parts Manager) was identified as needing a refresher on the AOS Basket Management module — she had missed two part families (cabin filters, brake fluid) that should have been added in February. A BMW TAK training slot is available next week as part of the T22 regional cycle. Maria has not yet confirmed her booking. If the slot is not confirmed today, the next available session is not until April."
-          />
-          <AISuggestionCard
-            icon="⚡"
-            title="Omega Garage — 3 IR Queries Unanswered for 48+ Hours, Response Overdue"
-            desc="Three independent repairer enquiries submitted via Partslink24 to Omega Garage have had no dealer response for over 48 hours."
-            detail="Three IR parts enquiries routed to Omega Garage through the Partslink24 platform have been sitting unacknowledged for more than 48 hours. The standard BMW NSC response SLA is 2 working hours. Two of the three queries relate to brake pad availability — a category already identified as a gap in the dealer's AOS basket. The third is an oil filter pricing request. Unanswered queries at this stage risk the IRs sourcing from a competing non-OEM supplier and not returning. Marcus should raise this directly with Anna Schmidt (Parts Manager) during today's visit and establish who is responsible for monitoring the PL24 query inbox on a daily basis."
-          />
-          <AISuggestionCard
-            icon="📞"
-            title="BetaMS Garage — Next Thursday Visit Not Yet Confirmed with Rick Richter"
-            desc="A follow-up visit to BetaMS Garage is due by 26 March. Rick Richter has not been notified. Given 3 prior reschedules, early confirmation is critical."
-            detail="Based on the standard 14-day cadence for dealers with declining KPIs, BetaMS Garage is due for a follow-up visit by 26 March 2026. Rick Richter has rescheduled the last three visits — including today's, which required three separate rescheduling requests before confirmation. To avoid a repeat, Marcus should call Hans directly before or after today's visit to verbally confirm the 26 March slot and follow up with a calendar invite. Early verbal commitment from the Principal significantly reduces the likelihood of a last-minute reschedule. If Hans declines or deflects, this should be flagged to the NSC C1-DE team as a formal engagement risk requiring programme-level intervention."
-          />
+          {[
+            { icon: '📚', key: '0' },
+            { icon: '⚡', key: '1' },
+            { icon: '📞', key: '2' },
+          ].map(({ icon, key }) => (
+            <AISuggestionCard
+              key={key}
+              icon={icon}
+              title={t(`dashboard.aiCards.${key}.title`)}
+              desc={t(`dashboard.aiCards.${key}.desc`)}
+              detail={t(`dashboard.aiCards.${key}.detail`)}
+            />
+          ))}
         </div>
       </div>
 

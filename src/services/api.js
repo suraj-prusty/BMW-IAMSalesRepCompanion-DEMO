@@ -139,6 +139,11 @@ export const api = {
     return data.url;
   },
 
+  // ── Audio: get pre-signed URL for playback (reuses photo-url endpoint) ────
+  async getAudioUrl(key) {
+    return this.getPhotoUrl(key); // same endpoint — any S3 key works
+  },
+
   // ── Photo upload → S3 (via Express server) ──────────────────────────────
   async uploadPhoto(base64, fileName, folder = "misc") {
     const response = await fetch(`${AI_BASE}/api/upload-photo`, {
@@ -151,6 +156,29 @@ export const api = {
       throw new Error(err.error || `Upload failed with status ${response.status}`);
     }
     return response.json(); // { url, key }
+  },
+
+  // ── AI: Transcribe audio → text (Whisper via Azure OpenAI) + store in S3 ───
+  // Accepts a Blob (audio/webm or audio/mp4) recorded by MediaRecorder.
+  // Returns { transcript: string, audioKey: string | null }
+  async transcribeAudio(blob, { visitId, folder = "dealer" } = {}) {
+    const base64 = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+
+    const response = await fetch(`${AI_BASE}/api/ai/transcribe`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ audio: base64, mimeType: blob.type, visitId, folder }),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || `Transcription failed with status ${response.status}`);
+    }
+    return response.json(); // { transcript, audioKey }
   },
 
   // ── AI: Generate (pitch, summary, email) ─────────────────────────────────

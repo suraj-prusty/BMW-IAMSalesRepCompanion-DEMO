@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, ChevronLeft, ChevronRight, Search as SearchIcon } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { api } from '../services/api';
 import { TEAM_REPS } from '../data/teamReps';
 import { getTodayLong } from '../utils/dateUtils';
@@ -24,37 +25,32 @@ const AMBER = '#F59E0B';
 const GREEN = '#22C55E';
 const RED   = '#EF4444';
 
-// Exactly 5 Dealer KPIs, in required order.
-const DEALER_KPI_FIELDS = [
-  { key: 'totalDealers',     label: 'Total Dealers',      format: (v) => `${v}` },
-  { key: 'tasksThisWeek',    label: 'Tasks This Week',    format: (v) => `${v}` },
-  { key: 'tasksOverdue',     label: 'Tasks Overdue',      format: (v) => String(v).padStart(2, '0'), color: (v) => (v > 0 ? AMBER : 'var(--text-primary)') },
-  { key: 'salesVsTarget',    label: 'Sales vs Target',    format: (v) => `${v}%`, color: (v) => (v >= 100 ? GREEN : AMBER) },
-  { key: 'purchaseVsTarget', label: 'Purchase vs Target', format: (v) => `${v}%`, color: (v) => (v >= 90 ? GREEN : AMBER) },
+// KPI field definitions — labels resolved at render time via t()
+const DEALER_KPI_KEYS = [
+  { key: 'totalDealers',     tKey: 'team.kpiLabels.totalDealers',     format: (v) => `${v}` },
+  { key: 'tasksThisWeek',    tKey: 'team.kpiLabels.tasksThisWeek',    format: (v) => `${v}` },
+  { key: 'tasksOverdue',     tKey: 'team.kpiLabels.tasksOverdue',     format: (v) => String(v).padStart(2, '0'), color: (v) => (v > 0 ? AMBER : 'var(--text-primary)') },
+  { key: 'salesVsTarget',    tKey: 'team.kpiLabels.salesVsTarget',    format: (v) => `${v}%`, color: (v) => (v >= 100 ? GREEN : AMBER) },
+  { key: 'purchaseVsTarget', tKey: 'team.kpiLabels.purchaseVsTarget', format: (v) => `${v}%`, color: (v) => (v >= 90 ? GREEN : AMBER) },
 ];
 
-// Exactly 4 IR Workshop KPIs, in required order.
-const IR_KPI_FIELDS = [
-  { key: 'totalWorkshops', label: 'Total Workshops', format: (v) => `${v}` },
-  { key: 'tasksThisWeek',  label: 'Tasks This Week',  format: (v) => `${v}` },
-  { key: 'tasksOverdue',   label: 'Tasks Overdue',   format: (v) => String(v).padStart(2, '0'), color: (v) => (v > 0 ? AMBER : 'var(--text-primary)') },
-  {
-    key: 'purchaseDeviation', label: 'Purchase Deviation',
-    format: formatDeviation,
-    color: (v) => (v >= 0 ? GREEN : RED),
-  },
+const IR_KPI_KEYS = [
+  { key: 'totalWorkshops',    tKey: 'team.kpiLabels.totalWorkshops',    format: (v) => `${v}` },
+  { key: 'tasksThisWeek',     tKey: 'team.kpiLabels.tasksThisWeek',     format: (v) => `${v}` },
+  { key: 'tasksOverdue',      tKey: 'team.kpiLabels.tasksOverdue',      format: (v) => String(v).padStart(2, '0'), color: (v) => (v > 0 ? AMBER : 'var(--text-primary)') },
+  { key: 'purchaseDeviation', tKey: 'team.kpiLabels.purchaseDeviation', format: formatDeviation, color: (v) => (v >= 0 ? GREEN : RED) },
+];
+
+const MANAGER_KPI_KEYS = [
+  { key: 'purchaseRevVsTarget', tKey: 'team.managerKpis.purchaseRevTarget' },
+  { key: 'abc',                 tKey: 'team.managerKpis.abc' },
+  { key: 'revYoY',              tKey: 'team.managerKpis.revYoY' },
+  { key: 'custMoM',             tKey: 'team.managerKpis.custYoY' },
 ];
 
 function formatDeviation(value) {
   const k = Math.round(Math.abs(value) / 1000);
   return `${value < 0 ? '-' : '+'}€${k}K`;
-}
-
-function greeting() {
-  const h = new Date().getHours();
-  if (h < 12) return 'Good morning';
-  if (h < 17) return 'Good afternoon';
-  return 'Good evening';
 }
 
 // "12:39" — native Date only, no date library.
@@ -101,11 +97,12 @@ function KpiPanel({ title, columns, children }) {
 }
 
 function RepCard({ rep, onOpen, isMobile, avatarBg }) {
+  const { t } = useTranslation();
   const dk = rep.dealerKpis;
   const ik = rep.irWorkshopKpis;
   const panelCols   = isMobile ? '1fr' : 'repeat(2, minmax(0, 1fr))';
-  const dealerCols  = isMobile ? '1fr' : `repeat(${DEALER_KPI_FIELDS.length}, minmax(0, 1fr))`;
-  const irCols      = isMobile ? '1fr' : `repeat(${IR_KPI_FIELDS.length}, minmax(0, 1fr))`;
+  const dealerCols  = isMobile ? '1fr' : `repeat(${DEALER_KPI_KEYS.length}, minmax(0, 1fr))`;
+  const irCols      = isMobile ? '1fr' : `repeat(${IR_KPI_KEYS.length}, minmax(0, 1fr))`;
 
   return (
     <div
@@ -136,7 +133,7 @@ function RepCard({ rep, onOpen, isMobile, avatarBg }) {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--accent)', fontSize: '13px', fontWeight: '500', whiteSpace: 'nowrap' }}>
-          View reports <ArrowRight size={15} />
+          {t('team.viewReports')} <ArrowRight size={15} />
         </div>
       </div>
 
@@ -144,17 +141,17 @@ function RepCard({ rep, onOpen, isMobile, avatarBg }) {
 
       {/* Dealer + IR Workshops — same representative, side by side on wide viewports */}
       <div style={{ display: 'grid', gridTemplateColumns: panelCols, gap: isMobile ? '20px' : '24px' }}>
-        <KpiPanel title="Dealer" columns={dealerCols}>
-          {DEALER_KPI_FIELDS.map((f) => (
-            <KpiItem key={f.key} label={f.label} value={f.format(dk[f.key])} color={f.color?.(dk[f.key])} />
+        <KpiPanel title={t('team.kpiPanel.dealer')} columns={dealerCols}>
+          {DEALER_KPI_KEYS.map((f) => (
+            <KpiItem key={f.key} label={t(f.tKey)} value={f.format(dk[f.key])} color={f.color?.(dk[f.key])} />
           ))}
         </KpiPanel>
 
-        <KpiPanel title="IR Workshops" columns={irCols}>
-          {IR_KPI_FIELDS.map((f) => (
+        <KpiPanel title={t('team.kpiPanel.ir')} columns={irCols}>
+          {IR_KPI_KEYS.map((f) => (
             <KpiItem
               key={f.key}
-              label={f.label}
+              label={t(f.tKey)}
               value={f.format(ik[f.key])}
               color={f.color?.(ik[f.key])}
               sub={f.key === 'purchaseDeviation' ? ik.purchaseDeviationComparison : undefined}
@@ -166,18 +163,12 @@ function RepCard({ rep, onOpen, isMobile, avatarBg }) {
   );
 }
 
-const MANAGER_KPIS = [
-  { key: 'purchaseRevVsTarget', label: 'Purchase Rev vs Target' },
-  { key: 'abc',                 label: 'ABC' },
-  { key: 'revYoY',              label: 'Rev YoY' },
-  { key: 'custMoM',             label: 'Cust YoY' },
-];
-
 function KpiPillBar({ selected, onToggle }) {
+  const { t } = useTranslation();
   return (
     <div style={{ marginBottom: '28px' }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
-        {MANAGER_KPIS.map((kpi) => {
+        {MANAGER_KPI_KEYS.map((kpi) => {
           const isSelected = selected.has(kpi.key);
           const isDisabled = !isSelected && selected.size >= 2;
           return (
@@ -199,10 +190,10 @@ function KpiPillBar({ selected, onToggle }) {
                 whiteSpace: 'nowrap',
                 letterSpacing: '0.01em',
               }}
-              title={isDisabled ? 'Max 2 KPIs can be selected' : isSelected ? 'Deselect' : 'Select'}
+              title={isDisabled ? t('team.kpiPill.maxSelected') : isSelected ? t('team.kpiPill.deselect') : t('team.kpiPill.select')}
             >
               {isSelected && <span style={{ marginRight: '5px', fontSize: '11px' }}>✓</span>}
-              {kpi.label}
+              {t(kpi.tKey)}
             </button>
           );
         })}
@@ -220,20 +211,21 @@ function KpiPillBar({ selected, onToggle }) {
               fontFamily: 'inherit',
             }}
           >
-            Clear
+            {t('team.kpiPill.clear')}
           </button>
         )}
       </div>
       <div style={{ marginTop: '8px', fontSize: '11px', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-        Select up to 2 KPIs — dealerships marked{' '}
-        <span style={{ color: '#EF4444', fontWeight: '600' }}>Critical</span>{' '}
-        under the chosen KPIs will be highlighted across your team.
+        {t('team.kpiPill.instruction')}{' '}
+        <span style={{ color: '#EF4444', fontWeight: '600' }}>{t('team.kpiPill.critical')}</span>{' '}
+        {t('team.kpiPill.instructionSuffix')}
       </div>
     </div>
   );
 }
 
 export default function TeamSelect() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const manager  = api.getUser();
   const width    = useViewportWidth();
@@ -267,12 +259,10 @@ export default function TeamSelect() {
   const totalPages = Math.max(1, Math.ceil(filteredReps.length / PAGE_SIZE));
   const safePage   = Math.min(currentPage, totalPages);
 
-  // Keep currentPage in sync with the clamped value (e.g. after a search narrows the result set).
   useEffect(() => {
     if (safePage !== currentPage) setCurrentPage(safePage);
   }, [safePage, currentPage]);
 
-  // Jump back to page 1 whenever the search term changes.
   useEffect(() => {
     setCurrentPage(1);
   }, [repSearch]);
@@ -286,19 +276,22 @@ export default function TeamSelect() {
     return m;
   }, []);
 
+  const h = new Date().getHours();
+  const greetingKey = h < 12 ? 'team.greetingMorning' : h < 17 ? 'team.greetingAfternoon' : 'team.greetingEvening';
+
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', padding: isMobile ? '20px 16px' : '32px 28px' }}>
 
       {/* Manager View eyebrow + greeting */}
       <div style={{ marginBottom: isMobile ? '28px' : '36px' }}>
         <div style={{ fontSize: '11px', fontWeight: '700', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '10px' }}>
-          Manager View · {getTodayLong()} · Updated {formatTime()}
+          {t('team.eyebrow', { date: getTodayLong(), time: formatTime() })}
         </div>
         <h1 style={{ margin: '0 0 8px 0', fontSize: isMobile ? '22px' : '26px', fontWeight: '700', color: 'var(--text-primary)' }}>
-          {greeting()}, {firstName}.
+          {t('team.greeting', { greeting: t(greetingKey), name: firstName })}
         </h1>
         <p style={{ margin: 0, fontSize: '14px', color: 'var(--text-secondary)' }}>
-          Your authorized Sales Representative portfolio at a glance.
+          {t('team.subLine')}
         </p>
       </div>
 
@@ -313,10 +306,10 @@ export default function TeamSelect() {
         }}>
           <div>
             <div style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-secondary)', marginBottom: '8px' }}>
-              My Team
+              {t('team.myTeam')}
             </div>
             <h2 style={{ margin: 0, fontSize: isMobile ? '22px' : '28px', fontWeight: '700', color: 'var(--text-primary)' }}>
-              Sales Representative performance
+              {t('team.sectionHeading')}
             </h2>
           </div>
 
@@ -325,7 +318,7 @@ export default function TeamSelect() {
             <SearchIcon size={14} color="var(--text-secondary)" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
             <input
               type="text"
-              placeholder="Search representative"
+              placeholder={t('team.searchPlaceholder')}
               value={repSearch}
               onChange={(e) => setRepSearch(e.target.value)}
               style={{
@@ -359,7 +352,7 @@ export default function TeamSelect() {
         {/* Rep list + empty state */}
         {filteredReps.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '32px 16px', color: 'var(--text-muted)', fontSize: '13px' }}>
-            No sales representatives found
+            {t('team.noResults')}
           </div>
         ) : (
           <>
@@ -372,13 +365,14 @@ export default function TeamSelect() {
                   avatarBg={avatarByRepId[rep.id]}
                   onOpen={() => {
                     sessionStorage.setItem('managerSelectedRepId', rep.id);
+                    sessionStorage.setItem('managerSelectedKpis', JSON.stringify([...selectedKpis]));
                     navigate('/dashboard');
                   }}
                 />
               ))}
             </div>
 
-            {/* Pagination — kept visually attached to the rep list */}
+            {/* Pagination */}
             {totalPages > 1 && (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: '14px', marginTop: '20px' }}>
                 <button
@@ -387,10 +381,10 @@ export default function TeamSelect() {
                   className="btn-secondary"
                   style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', padding: '7px 12px' }}
                 >
-                  <ChevronLeft size={14} /> Prev
+                  <ChevronLeft size={14} /> {t('team.prev')}
                 </button>
                 <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                  Page {safePage} of {totalPages}
+                  {t('team.page', { n: safePage, m: totalPages })}
                 </span>
                 <button
                   onClick={() => setCurrentPage(Math.min(totalPages, safePage + 1))}
@@ -398,7 +392,7 @@ export default function TeamSelect() {
                   className="btn-secondary"
                   style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', padding: '7px 12px' }}
                 >
-                  Next <ChevronRight size={14} />
+                  {t('team.next')} <ChevronRight size={14} />
                 </button>
               </div>
             )}
@@ -411,4 +405,3 @@ export default function TeamSelect() {
     </div>
   );
 }
-

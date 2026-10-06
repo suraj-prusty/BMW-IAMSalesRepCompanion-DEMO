@@ -1,0 +1,543 @@
+{
+  "nav": {
+    "appName": "Intelligent IAM Copilot",
+    "myTeam": "My Team",
+    "dealer": "Dealer",
+    "ir": "IR",
+    "lightMode": "Switch to light mode",
+    "darkMode": "Switch to dark mode",
+    "viewOnly": "View Only",
+    "profile": "Profile",
+    "logout": "Logout"
+  },
+  "dashboard": {
+    "greeting": "Good Morning, {{name}}",
+    "thisWeeksPlan": "This Week's Plan",
+    "planMyDay": "Plan My Day",
+    "kpi": {
+      "myDealers": "My Dealers",
+      "openActions": "Open Actions",
+      "salesVsTarget": "Sales vs Target",
+      "pl24Adoption": "PL24 Adoption",
+      "aosAdoption": "AOS Adoption",
+      "belowPurchaseTarget": "{{n}} below 60% purchase target",
+      "belowTarget": "{{n}} below 60% target",
+      "atOrAboveTarget": "{{n}} at or above target",
+      "noPurchaseData": "No purchase data",
+      "target80": "Target 80%",
+      "target75": "Target 75%"
+    },
+    "tabs": {
+      "myDealers": "My Dealers",
+      "openActions": "Open Actions"
+    },
+    "recommendedThisWeek": "Recommended for this week",
+    "dropHint": "Drop to add →",
+    "computingRecommendations": "Computing recommendations…",
+    "slotsFilled": "{{n}} of 3 slots filled · Postpone a visit to free a slot",
+    "emptyDropZone": "Drag a dealership here to plan for today",
+    "myDealerships": "My Dealerships",
+    "searchPlaceholder": "Search by dealer name or code…",
+    "slotsAvailable": "{{n}} slot available — drag a card up or click + Plan Today",
+    "slotsAvailable_plural": "{{n}} slots available — drag a card up or click + Plan Today",
+    "postponeToFreeSlot": "Postpone a visit above to free a slot",
+    "loadingDealers": "Loading dealers...",
+    "noResults": "No dealers match \"{{query}}\"",
+    "showTopOnly": "Show first {{n}} only ▲",
+    "showAll": "Show all {{n}} dealers ▼",
+    "comingSoon": "Coming soon",
+    "comingSoonSub": "This section is under development. Check back soon.",
+    "aiSuggestions": "AI Suggestions",
+    "aiSuggestionsSub": "Updated this morning based on territory data",
+    "dealerCard": {
+      "lastVisit": "Last visit: {{date}}",
+      "postpone": "Postpone ↷",
+      "planToday": "+ Plan Today",
+      "planTodayTooltip": "Postpone a visit above to free a slot",
+      "startVisit": "Start Visit →",
+      "viewDealership": "View Dealership",
+      "purchaseRevTarget": "Purchase Rev vs Target",
+      "abc": "ABC",
+      "revYoY": "Rev YoY",
+      "custYoY": "Cust YoY"
+    },
+    "weekPlan": {
+      "title": "This Week's Plan",
+      "noVisits": "No visits scheduled",
+      "today": "Today",
+      "close": "Close"
+    },
+    "prioritization": {
+      "banner": "Intelligent Planning · Decide who to visit",
+      "kpiTiles": {
+        "revenueGap": "Revenue Gap (Under-Target)",
+        "churnRisk": "Churn / Dormancy Risk",
+        "avgOpportunity": "Avg Opportunity Score",
+        "overdueVisits": "Overdue Visits",
+        "lowCampaign": "Low Campaign Adoption"
+      },
+      "kpiSubs": {
+        "revenueGap": "{{n}} of {{total}} accounts below target",
+        "churnRisk": "{{high}} HIGH · {{med}} MED",
+        "avgOpportunity": "Top 12 accounts shown",
+        "overdueVisits": "Behind expected visit cadence",
+        "lowCampaign": "Active campaigns < 30% adoption"
+      },
+      "abcBreakdown": "ABC Segment Breakdown",
+      "loadingApi": "Loading from API…",
+      "liveApi": "Live · AWS API",
+      "fallbackCsv": "Fallback · CSV ({{error}})",
+      "abcMeta": {
+        "a": "Top revenue — protect & grow",
+        "b": "Mid-tier — develop & move up",
+        "c": "Low contribution — qualify or churn"
+      },
+      "accounts": "{{n}} accounts",
+      "highRisk": "{{n}} HIGH risk",
+      "topCountry": "top: {{country}}",
+      "tableHeaders": {
+        "rank": "Rank",
+        "account": "Account",
+        "whyVisit": "Why Visit",
+        "vsTarget": "vs Target",
+        "yoy": "YoY",
+        "dormancy": "Dormancy",
+        "oppScore": "Opp Score",
+        "lastVisit": "Last Visit",
+        "cadence": "Cadence"
+      },
+      "accountPriorityRanking": "Account Priority Ranking",
+      "showTopOnly": "Show top 15 only ▲",
+      "showAllAccounts": "Show all {{n}} accounts ▼",
+      "whyTags": {
+        "revenueGap": "Revenue Gap",
+        "churnRisk": "Churn Risk",
+        "watch": "Watch",
+        "decliningYoY": "Declining YoY",
+        "overdue": "Overdue",
+        "highOpp": "High Opp"
+      }
+    },
+    "aiCards": {
+      "collapse": "Collapse",
+      "viewDetail": "View detail",
+      "0": {
+        "title": "West Drive GmbH — AOS Training Slot Available Next Week, Confirmation Pending",
+        "desc": "A BMW TAK training session for AOS Basket Management is open for 18 March. Dealer has not yet confirmed attendance.",
+        "detail": "During the last visit at West Drive GmbH, Maria Bauer (Parts Manager) was identified as needing a refresher on the AOS Basket Management module — she had missed two part families (cabin filters, brake fluid) that should have been added in February. A BMW TAK training slot is available next week as part of the T22 regional cycle. Maria has not yet confirmed her booking. If the slot is not confirmed today, the next available session is not until April."
+      },
+      "1": {
+        "title": "Omega Garage — 3 IR Queries Unanswered for 48+ Hours, Response Overdue",
+        "desc": "Three independent repairer enquiries submitted via Partslink24 to Omega Garage have had no dealer response for over 48 hours.",
+        "detail": "Three IR parts enquiries routed to Omega Garage through the Partslink24 platform have been sitting unacknowledged for more than 48 hours. The standard BMW NSC response SLA is 2 working hours. Two of the three queries relate to brake pad availability — a category already identified as a gap in the dealer's AOS basket. The third is an oil filter pricing request. Unanswered queries at this stage risk the IRs sourcing from a competing non-OEM supplier and not returning. Marcus should raise this directly with Anna Schmidt (Parts Manager) during today's visit and establish who is responsible for monitoring the PL24 query inbox on a daily basis."
+      },
+      "2": {
+        "title": "BetaMS Garage — Next Thursday Visit Not Yet Confirmed with Rick Richter",
+        "desc": "A follow-up visit to BetaMS Garage is due by 26 March. Rick Richter has not been notified. Given 3 prior reschedules, early confirmation is critical.",
+        "detail": "Based on the standard 14-day cadence for dealers with declining KPIs, BetaMS Garage is due for a follow-up visit by 26 March 2026. Rick Richter has rescheduled the last three visits — including today's, which required three separate rescheduling requests before confirmation. To avoid a repeat, Marcus should call Hans directly before or after today's visit to verbally confirm the 26 March slot and follow up with a calendar invite. Early verbal commitment from the Principal significantly reduces the likelihood of a last-minute reschedule. If Hans declines or deflects, this should be flagged to the NSC C1-DE team as a formal engagement risk requiring programme-level intervention."
+      }
+    }
+  },
+  "team": {
+    "eyebrow": "Manager View · {{date}} · Updated {{time}}",
+    "greeting": "{{greeting}}, {{name}}.",
+    "greetingMorning": "Good morning",
+    "greetingAfternoon": "Good afternoon",
+    "greetingEvening": "Good evening",
+    "subLine": "Your authorized Sales Representative portfolio at a glance.",
+    "myTeam": "My Team",
+    "sectionHeading": "Sales Representative performance",
+    "searchPlaceholder": "Search representative",
+    "noResults": "No sales representatives found",
+    "prev": "Prev",
+    "next": "Next",
+    "page": "Page {{n}} of {{m}}",
+    "viewReports": "View reports",
+    "kpiPanel": {
+      "dealer": "Dealer",
+      "ir": "IR Workshops"
+    },
+    "kpiLabels": {
+      "totalDealers": "Total Dealers",
+      "tasksThisWeek": "Tasks This Week",
+      "tasksOverdue": "Tasks Overdue",
+      "salesVsTarget": "Sales vs Target",
+      "purchaseVsTarget": "Purchase vs Target",
+      "totalWorkshops": "Total Workshops",
+      "purchaseDeviation": "Purchase Deviation"
+    },
+    "managerKpis": {
+      "purchaseRevTarget": "Purchase Rev vs Target",
+      "abc": "ABC",
+      "revYoY": "Rev YoY",
+      "custYoY": "Cust YoY"
+    },
+    "kpiPill": {
+      "maxSelected": "Max 2 KPIs can be selected",
+      "deselect": "Deselect",
+      "select": "Select",
+      "clear": "Clear",
+      "instruction": "Select up to 2 KPIs — dealerships marked",
+      "critical": "Critical",
+      "instructionSuffix": "under the chosen KPIs will be highlighted across your team."
+    }
+  },
+  "language": {
+    "label": "Language",
+    "en": "English",
+    "de": "Deutsch",
+    "fr": "Français",
+    "zh": "中文"
+  },
+  "dealerBriefing": {
+    "loading": "Loading dealer data...",
+    "error": "Error loading dealer: {{error}}",
+    "badgeLabels": {
+      "high": "HIGH PRIORITY",
+      "med": "MEDIUM PRIORITY",
+      "low": "LOW PRIORITY"
+    },
+    "visitScheduled": "Visit scheduled: Today {{time}}",
+    "lastVisitLabel": "Last visit",
+    "kpiBar": {
+      "revAchievement": "Rev Achievement",
+      "abcTier": "ABC Tier",
+      "revYoY": "Rev YoY",
+      "custYoY": "Cust YoY",
+      "hideKpis": "Hide KPIs ▲",
+      "viewFullKpis": "View Full KPIs ▼"
+    },
+    "kpiTable": {
+      "colMetric": "Metric",
+      "colActual": "Actual",
+      "colTarget": "Target",
+      "colNote": "Note",
+      "metrics": {
+        "revVsTargetSales": "Revenue vs Target Sales",
+        "momSalesTrend": "MoM Sales Trend",
+        "abcSegment": "ABC Segment",
+        "revVsTargetPurchase": "Revenue vs Target Purchase",
+        "revYoyComp": "Revenue YoY Comp",
+        "partsPurchaseYoY": "Parts Purchase YoY",
+        "customerCountYoY": "Customer Count YoY",
+        "customerCountMoM": "Customer Count MoM",
+        "activeIrClients": "Active IR Clients",
+        "openActions": "Open Actions",
+        "lastPurchaseMonth": "Last Purchase Month"
+      },
+      "targets": {
+        "positiveGe0": "Positive (≥ 0%)",
+        "within30Days": "Within last 30 days"
+      },
+      "notes": {
+        "positiveMoM": "Positive month-on-month momentum",
+        "slightDeclineMoM": "Slight month-on-month decline",
+        "significantDeclineMoM": "Significant month-on-month decline",
+        "noTrendData": "No trend data",
+        "medianYoY": "Median YoY across product categories",
+        "noYoYData": "No YoY data",
+        "noMoMData": "No MoM data",
+        "noCustomerData": "No customer data",
+        "distinctCustomers": "{{n}} distinct customers",
+        "noOpenActions": "No open actions as of now",
+        "mostRecentPartsOrder": "Most recent parts order placed",
+        "noPurchaseData": "No purchase data",
+        "lastMonth": "Last month",
+        "ytdRevenue": "YTD revenue is {{amount}}",
+        "ofTargetAchieved": "{{pct}}% of target achieved ({{month}})",
+        "growthParts": "CY {{cy}} vs LY {{ly}} — {{pct}}% {{dir}}",
+        "growth": "growth",
+        "decline": "decline"
+      }
+    },
+    "aiSummary": {
+      "title": "AI Summary",
+      "cached": "Cached · {{date}}",
+      "analysing": "Analysing...",
+      "regenerate": "Regenerate",
+      "generate": "Generate Summary",
+      "emptyState": "Click \"Generate Summary\" for an AI-powered dealer intelligence brief",
+      "errorMsg": "Failed to generate summary: {{error}}"
+    },
+    "lastVisit": {
+      "heading": "Last Visit",
+      "openActionsForward": "Open actions carried forward:"
+    },
+    "topIssues": {
+      "title": "Top Issues to Address",
+      "loading": "Loading…",
+      "cached": "Cached · {{date}}",
+      "generatingInsights": "Generating insights…",
+      "noData": "No issues data available for this dealer.",
+      "rootCause": "Root Cause: ",
+      "revenueImpact": "Est. Revenue Impact: "
+    },
+    "aiPitch": {
+      "title": "AI Generated Pitch",
+      "cached": "Cached · {{date}}",
+      "generating": "Generating...",
+      "regenerate": "Regenerate",
+      "generate": "Generate Pitch",
+      "emptyState": "Click \"Generate Pitch\" to create a personalised AI opening pitch",
+      "errorMsg": "Failed to generate pitch: {{error}}"
+    },
+    "agenda": "Suggested Agenda",
+    "captureVisit": "Capture Visit →"
+  },
+  "dealerVisitForm": {
+    "title": "Visit Capture",
+    "loading": "Loading…",
+    "toggleDealer": "Dealer",
+    "toggleIR": "IR",
+    "saveStatus": {
+      "draftRestored": "Draft restored",
+      "saved": "Draft saved",
+      "submitted": "Submitted",
+      "failed": "Save failed — try again",
+      "autoSaved": "Auto-saved",
+      "saving": "Saving…"
+    },
+    "buttons": {
+      "saveDraft": "Save Draft",
+      "submitVisit": "Submit Visit",
+      "viewDealer": "View Dealer",
+      "recordVoice": "Record Voice Note",
+      "stopRecording": "Stop Recording",
+      "transcribing": "Transcribing…",
+      "summarize": "Summarize",
+      "summarizing": "Summarizing…",
+      "revertSummary": "↺ Revert to original",
+      "addAnotherAction": "Add Another Action",
+      "uploadPhoto": "Upload Photo",
+      "addComment": "+ Add Comment",
+      "hideComment": "− Hide Comment",
+      "uploading": "Uploading…"
+    },
+    "infoBar": {
+      "dealerCode": "Dealer Code",
+      "lastVisit": "Last Visit",
+      "openActions": "Open Actions",
+      "performance": "Performance",
+      "perfOnTrack": "On Track",
+      "perfMonitor": "Monitor",
+      "perfAtRisk": "At Risk"
+    },
+    "sections": {
+      "1": { "title": "What did you discuss?", "subtitle": "Select all topics discussed during this visit." },
+      "2": { "title": "Visit Notes", "subtitle": "Add key notes or use voice capture." },
+      "3": { "title": "Biggest Challenge", "subtitle": "What is the main challenge?" },
+      "4": { "title": "Biggest Opportunity", "subtitle": "What is the biggest opportunity?" },
+      "5": { "title": "Competitor Activity", "subtitle": "Any competitor activity observed?" },
+      "6": { "title": "Actions Agreed", "subtitle": "List the key actions agreed during this visit." },
+      "7": { "title": "Overall Visit Status", "subtitle": "How was the overall health of this visit?" }
+    },
+    "placeholders": {
+      "otherTopic": "Describe the other topic discussed...",
+      "visitNotes": "Add your visit notes here...",
+      "selectChallenge": "Select challenge...",
+      "selectOpportunity": "Select opportunity...",
+      "competitorActivity": "Describe competitor activity...",
+      "enterAction": "Enter action"
+    },
+    "topics": {
+      "stock": "Stock",
+      "delivery": "Delivery",
+      "pl24": "PL24",
+      "aos": "AOS",
+      "marketing": "Marketing",
+      "competition": "Competition",
+      "pricing": "Pricing",
+      "reporting": "Reporting",
+      "other": "Other"
+    },
+    "challenges": {
+      "stock_availability": "Stock Availability",
+      "delivery_issues": "Delivery Issues",
+      "pl24_adoption": "PL24 Adoption",
+      "aos_compliance": "AOS Compliance",
+      "competitor_pressure": "Competitor Pressure",
+      "pricing_concerns": "Pricing Concerns",
+      "training_needed": "Training Needed",
+      "other": "Other"
+    },
+    "opportunities": {
+      "increase_pl24_adoption": "Increase PL24 Adoption",
+      "expand_parts_range": "Expand Parts Range",
+      "aos_upsell": "AOS Upsell",
+      "fleet_conversion": "Fleet Conversion",
+      "workshop_upgrade": "Workshop Upgrade",
+      "marketing_support": "Marketing Support",
+      "other": "Other"
+    },
+    "owners": {
+      "dealer": "Dealer",
+      "rep": "Rep",
+      "both": "Both"
+    },
+    "priorities": {
+      "high": "High",
+      "medium": "Medium",
+      "low": "Low"
+    },
+    "competitor": {
+      "notObserved": "Not Observed",
+      "observed": "Observed"
+    },
+    "actionsTable": {
+      "colAction": "Action",
+      "colOwner": "Owner",
+      "colDueDate": "Due Date",
+      "colPriority": "Priority",
+      "ownerDefault": "Owner",
+      "priorityDefault": "Priority"
+    },
+    "status": {
+      "good": "Good",
+      "monitor": "Monitor",
+      "needsSupport": "Needs Support"
+    },
+    "pdfPanel": {
+      "title": "Visit Report (PDF Preview)",
+      "subtitle": "This is how your visit report will look.",
+      "preview": "Preview",
+      "downloadPdf": "↓ Download PDF",
+      "print": "⎙ Print"
+    }
+  },
+  "irVisitForm": {
+    "title": "IR Visit Capture",
+    "loading": "Loading…",
+    "toggleDealer": "Dealer",
+    "toggleIR": "IR",
+    "saveStatus": {
+      "draftRestored": "Draft restored",
+      "saved": "✓ Saved",
+      "submitted": "✓ Submitted",
+      "failed": "Save failed",
+      "saving": "Saving…"
+    },
+    "buttons": {
+      "saveDraft": "Save Draft",
+      "submitVisit": "Submit Visit",
+      "viewIRProfile": "View IR Profile",
+      "recordVoice": "Record Voice Note",
+      "stopRecording": "Stop Recording",
+      "transcribing": "Transcribing…",
+      "summarize": "Summarize",
+      "summarizing": "Summarizing…",
+      "revertSummary": "↺ Revert to original",
+      "addProduct": "Add Product",
+      "addAnotherAction": "Add Another Action",
+      "uploadPhoto": "Upload Photo",
+      "changePhoto": "Change Photo",
+      "uploading": "Uploading…"
+    },
+    "infoBar": {
+      "customerCode": "Customer Code",
+      "irCategory": "IR Category",
+      "iamStatus": "IAM Status",
+      "servicingDealer": "Servicing Dealer"
+    },
+    "sections": {
+      "1": { "title": "Sales Conversation Topics", "subtitle": "Select all topics discussed during this visit." },
+      "2": { "title": "Visit Notes", "subtitle": "Add key notes or use voice capture." },
+      "3": { "title": "Buying Behaviour", "subtitle": "What best describes the IR's current buying pattern?" },
+      "4": { "title": "Competitor / Lost Business Insight", "subtitle": "Any competitor activity or business lost?" },
+      "5": { "title": "Direct Sale Generated from This Visit", "subtitle": "Record all parts ordered during or as a result of this visit." },
+      "6": { "title": "Actions & Next Visit Planning", "subtitle": "List actions and plan the next visit." },
+      "7": { "title": "Visit Outcome", "subtitle": "What was the outcome of this visit?" }
+    },
+    "placeholders": {
+      "otherTopic": "Describe the other topic discussed...",
+      "visitNotes": "Type your visit notes here…",
+      "contactMet": "e.g. David Brown (Owner)",
+      "competitorReason": "e.g. 20% discount on brake parts",
+      "productDescription": "e.g. Brake Pads",
+      "actionDescription": "Describe the action…"
+    },
+    "topics": {
+      "pricing": "Pricing",
+      "stock availability": "Stock Availability",
+      "pl24": "PL24",
+      "delivery": "Delivery",
+      "rewards program": "Rewards Program",
+      "technical support": "Technical Support",
+      "competition": "Competition",
+      "marketing": "Marketing",
+      "warranty": "Warranty",
+      "other": "Other"
+    },
+    "contactMet": "Contact Met",
+    "visitType": {
+      "label": "Visit Type",
+      "salesCall": "Sales Call"
+    },
+    "buyingBehaviour": {
+      "regular_growing": "Regular & Growing",
+      "captive_parts_only": "Captive Parts Only",
+      "buying_competitive_parts_elsewhere": "Buying Competitive Parts Elsewhere",
+      "inconsistent_seasonal": "Inconsistent / Seasonal"
+    },
+    "competitor": {
+      "notObserved": "Not Observed",
+      "observed": "Observed",
+      "labelCompetitor": "Competitor",
+      "labelCategoryLost": "Category Lost",
+      "labelReason": "Reason",
+      "selectPlaceholder": "Select…"
+    },
+    "saleToggle": {
+      "label": "Sale Achieved?",
+      "yes": "Yes",
+      "no": "No"
+    },
+    "saleTable": {
+      "colProduct": "Product / Part Description",
+      "colQty": "Qty",
+      "colUnitPrice": "Unit Price",
+      "colTotalValue": "Total Value",
+      "colInvoiceRef": "Invoice / Ref No.",
+      "totalOrderValue": "Total Order Value",
+      "directSaleAchieved": "Direct Sale Achieved"
+    },
+    "actionsTable": {
+      "colAction": "Action Required",
+      "colResponsible": "Responsible",
+      "colDueDate": "Due Date",
+      "colPriority": "Priority",
+      "colStatus": "Status"
+    },
+    "responsible": {
+      "rep": "Rep",
+      "dealer": "Dealer",
+      "both": "Both"
+    },
+    "priorities": {
+      "high": "High",
+      "medium": "Medium",
+      "low": "Low"
+    },
+    "actionStatuses": {
+      "open": "Open",
+      "inProgress": "In Progress",
+      "closed": "Closed"
+    },
+    "visitOutcomes": {
+      "orderGenerated": "Order Generated",
+      "opportunityIdentified": "Opportunity Identified",
+      "noProgress": "No Progress"
+    },
+    "newIRs": {
+      "label": "New IRs identified in area?",
+      "no": "No",
+      "yesAddedToCRM": "Yes — added to CRM"
+    },
+    "pdfPanel": {
+      "title": "Visit Report (PDF Preview)",
+      "subtitle": "This is how your visit report will look.",
+      "preview": "Preview",
+      "downloadPdf": "↓ Download PDF",
+      "print": "⎙ Print"
+    }
+  }
+}

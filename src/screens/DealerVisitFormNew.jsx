@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
   Building2, Cloud, Mic, Sparkles, AlertTriangle, TrendingUp,
   Camera, Plus, Trash2, ExternalLink, CheckCircle, Users,
@@ -7,6 +8,7 @@ import {
   Smile, Meh, Frown,
 } from 'lucide-react';
 import { api } from '../services/api';
+import { useVoiceRecorder } from '../hooks/useVoiceRecorder';
 import bmwLogo from '../assets/bmw-logo.svg';
 
 // ── Responsive hook ────────────────────────────────────────────────────────────
@@ -117,7 +119,7 @@ function SummaryRow({ label, labelColor, children }) {
 }
 
 // ── Radio ─────────────────────────────────────────────────────────────────────
-function Radio({ value, selected, onChange }) {
+function Radio({ value, displayLabel, selected, onChange }) {
   return (
     <label style={{
       display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer',
@@ -132,7 +134,7 @@ function Radio({ value, selected, onChange }) {
       }}>
         {selected && <div style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#fff' }} />}
       </div>
-      {value}
+      {displayLabel !== undefined ? displayLabel : value}
     </label>
   );
 }
@@ -145,6 +147,7 @@ function Radio({ value, selected, onChange }) {
 //   dealer   — local CSV fallback (used only for lastVisitDate, openActionsCount, revenueVsTarget)
 //   data     — local CSV dealer data (contacts, openActions, etc.)
 export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, data }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { id: routeId } = useParams();
   const dealerId = dealerIdProp || routeId;
@@ -181,6 +184,7 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
               if (fd.topics_discussed?.length)  setTopics(fd.topics_discussed);
               if (fd.other_topic)                setOtherTopicText(fd.other_topic);
               if (fd.visit_notes)                setVisitNotes(fd.visit_notes);
+              if (fd.voice_note_key)             setVoiceNoteKey(fd.voice_note_key);
               if (fd.biggest_challenge)          setChallenge(fd.biggest_challenge);
               if (fd.biggest_opportunity)        setOpportunity(fd.biggest_opportunity);
               if (fd.competitor_activity?.mode)      setCompetitorMode(fd.competitor_activity.mode);
@@ -254,6 +258,52 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
     { action: '', owner: '', dueDate: '', priority: '' },
   ]);
   const [overallStatus, setOverallStatus] = useState('');
+  const [voiceNoteKey,  setVoiceNoteKey]  = useState(''); // S3 key of stored audio
+
+  // ── Voice recorder ────────────────────────────────────────────────────────
+  const { isRecording, isTranscribing, error: voiceError, start: startRecording, stop: stopRecording } =
+    useVoiceRecorder({
+      visitId:        visitId,
+      folder:         'dealer',
+      onTranscript:   (text) => {
+        setVisitNotes((prev) => (prev ? prev + ' ' + text : text).slice(0, 1000));
+        setPreSummaryNotes(null); // new recording invalidates undo
+      },
+      onAudioStored:  (key)  => setVoiceNoteKey(key),
+    });
+
+  // ── AI Summarize + Undo (local only — not persisted) ─────────────────────
+  const [preSummaryNotes, setPreSummaryNotes] = useState(null); // null = no summary applied
+  const [isSummarizing,   setIsSummarizing]   = useState(false);
+  const [summarizeError,  setSummarizeError]  = useState(null);
+
+  const handleSummarize = async () => {
+    if (!visitNotes.trim() || isSummarizing) return;
+    setSummarizeError(null);
+    setIsSummarizing(true);
+    try {
+      const summary = await api.generate({
+        systemPrompt: 'You are a sales rep assistant. Summarise the dealer visit note in 3-5 concise bullet points. Preserve key facts, decisions, action items, and any specific numbers or names mentioned. Return plain text only, no markdown.',
+        userPrompt: visitNotes,
+        maxTokens: 300,
+        temperature: 0.3,
+      });
+      setPreSummaryNotes(visitNotes);
+      setVisitNotes(summary.slice(0, 1000));
+    } catch (err) {
+      setSummarizeError('Could not generate summary. Please try again.');
+      console.error('[DealerVisitFormNew] summarize error:', err.message);
+    } finally {
+      setIsSummarizing(false);
+    }
+  };
+
+  const handleRevertSummary = () => {
+    if (preSummaryNotes !== null) {
+      setVisitNotes(preSummaryNotes);
+      setPreSummaryNotes(null);
+    }
+  };
 
   // ── PDF preview state ─────────────────────────────────────────────────────
   const pdfRef  = useRef(null);
@@ -310,6 +360,7 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
       topics_discussed:   topics,
       other_topic:        otherTopicText,
       visit_notes:        visitNotes,
+      voice_note_key:     voiceNoteKey || null,
       biggest_challenge:  challenge,
       biggest_opportunity: opportunity,
       competitor_activity: {
@@ -397,9 +448,9 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
   };
 
   const STATUS_OPTIONS = [
-    { label: 'Good',          Icon: Smile, color: '#22C55E', bg: 'rgba(34,197,94,0.12)'  },
-    { label: 'Monitor',       Icon: Meh,   color: '#F59E0B', bg: 'rgba(245,158,11,0.12)' },
-    { label: 'Needs Support', Icon: Frown, color: '#EF4444', bg: 'rgba(239,68,68,0.12)'  },
+    { value: 'Good',          label: t('dealerVisitForm.status.good'),         Icon: Smile, color: '#22C55E', bg: 'rgba(34,197,94,0.12)'  },
+    { value: 'Monitor',       label: t('dealerVisitForm.status.monitor'),      Icon: Meh,   color: '#F59E0B', bg: 'rgba(245,158,11,0.12)' },
+    { value: 'Needs Support', label: t('dealerVisitForm.status.needsSupport'), Icon: Frown, color: '#EF4444', bg: 'rgba(239,68,68,0.12)'  },
   ];
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -414,19 +465,19 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
       }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
           <h1 style={{ margin: 0, fontSize: isMobile ? '18px' : '22px', fontWeight: '700', color: 'var(--text-primary)' }}>
-            Visit Capture
+            {t('dealerVisitForm.title')}
           </h1>
           {/* Dealer / IR toggle */}
           <div style={{
             display: 'inline-flex', background: 'var(--surface-raised)', border: '1px solid var(--border)',
             borderRadius: '6px', padding: '2px', gap: '2px',
           }}>
-            {[{ label: 'Dealer', path: `/visit-capture/${dealerId}` }, { label: 'IR', path: `/ir-visit-capture/${dealerId}` }].map(({ label, path }) => (
-              <button key={label} type="button" onClick={() => navigate(path)} style={{
+            {[{ value: 'Dealer', label: t('dealerVisitForm.toggleDealer'), path: `/visit-capture/${dealerId}` }, { value: 'IR', label: t('dealerVisitForm.toggleIR'), path: `/ir-visit-capture/${dealerId}` }].map(({ value, label, path }) => (
+              <button key={value} type="button" onClick={() => navigate(path)} style={{
                 padding: '4px 14px', borderRadius: '4px', border: 'none', cursor: 'pointer',
                 fontSize: '12px', fontWeight: '600', fontFamily: 'inherit', transition: 'all 0.15s',
-                background: label === 'Dealer' ? '#A100FF' : 'transparent',
-                color: label === 'Dealer' ? '#fff' : 'var(--text-secondary)',
+                background: value === 'Dealer' ? '#A100FF' : 'transparent',
+                color: value === 'Dealer' ? '#fff' : 'var(--text-secondary)',
               }}>
                 {label}
               </button>
@@ -437,11 +488,11 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
         {/* Action bar */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', ...(isMobile && { width: '100%' }) }}>
           {/* Save status feedback */}
-          {saveStatus === 'draft_restored' && <span style={{ fontSize: '12px', color: '#F59E0B', display: 'flex', alignItems: 'center', gap: '4px' }}><Cloud size={13} /> Draft restored</span>}
-          {saveStatus === 'saved'          && <span style={{ fontSize: '12px', color: '#22C55E', display: 'flex', alignItems: 'center', gap: '4px' }}><Cloud size={13} /> Draft saved</span>}
-          {saveStatus === 'submitted'      && <span style={{ fontSize: '12px', color: '#22C55E', display: 'flex', alignItems: 'center', gap: '4px' }}><CheckCircle size={13} /> Submitted</span>}
-          {saveStatus === 'error'          && <span style={{ fontSize: '12px', color: '#EF4444' }}>Save failed — try again</span>}
-          {!saveStatus && !isMobile  && <span style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '4px' }}><Cloud size={13} /> Auto-saved</span>}
+          {saveStatus === 'draft_restored' && <span style={{ fontSize: '12px', color: '#F59E0B', display: 'flex', alignItems: 'center', gap: '4px' }}><Cloud size={13} /> {t('dealerVisitForm.saveStatus.draftRestored')}</span>}
+          {saveStatus === 'saved'          && <span style={{ fontSize: '12px', color: '#22C55E', display: 'flex', alignItems: 'center', gap: '4px' }}><Cloud size={13} /> {t('dealerVisitForm.saveStatus.saved')}</span>}
+          {saveStatus === 'submitted'      && <span style={{ fontSize: '12px', color: '#22C55E', display: 'flex', alignItems: 'center', gap: '4px' }}><CheckCircle size={13} /> {t('dealerVisitForm.saveStatus.submitted')}</span>}
+          {saveStatus === 'error'          && <span style={{ fontSize: '12px', color: '#EF4444' }}>{t('dealerVisitForm.saveStatus.failed')}</span>}
+          {!saveStatus && !isMobile  && <span style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '4px' }}><Cloud size={13} /> {t('dealerVisitForm.saveStatus.autoSaved')}</span>}
 
           <button
             type="button"
@@ -456,7 +507,7 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
               ...(isMobile && { flex: 1 }),
             }}
           >
-            {isSaving ? 'Saving…' : 'Save Draft'}
+            {isSaving ? t('dealerVisitForm.saveStatus.saving') : t('dealerVisitForm.buttons.saveDraft')}
           </button>
 
           <button
@@ -473,7 +524,7 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
               ...(isMobile && { flex: 1 }),
             }}
           >
-            <CheckCircle size={14} /> {isSaving ? 'Saving…' : 'Submit Visit'}
+            <CheckCircle size={14} /> {isSaving ? t('dealerVisitForm.saveStatus.saving') : t('dealerVisitForm.buttons.submitVisit')}
           </button>
         </div>
       </div>
@@ -495,7 +546,7 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
 
         <div style={{ flexShrink: 0 }}>
           <div style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)' }}>
-            {apiLoading ? 'Loading…' : dealerName}
+            {apiLoading ? t('dealerVisitForm.loading') : dealerName}
           </div>
           <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '1px' }}>
             {dealerLocation}
@@ -508,9 +559,9 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
 
         <div style={{ display: 'flex', gap: isMobile ? '16px' : '20px', flexWrap: 'wrap', flex: 1 }}>
           {[
-            { label: 'Dealer Code',  value: apiLoading ? '—' : dealerCode },
-            { label: 'Last Visit',   value: lastVisit },
-            { label: 'Open Actions', value: openActionsCount, color: openActionsCount > 0 ? '#EF4444' : 'var(--text-primary)' },
+            { label: t('dealerVisitForm.infoBar.dealerCode'),  value: apiLoading ? '—' : dealerCode },
+            { label: t('dealerVisitForm.infoBar.lastVisit'),   value: lastVisit },
+            { label: t('dealerVisitForm.infoBar.openActions'), value: openActionsCount, color: openActionsCount > 0 ? '#EF4444' : 'var(--text-primary)' },
           ].map((stat) => (
             <div key={stat.label}>
               <div style={{ fontSize: '9px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '2px' }}>
@@ -524,13 +575,13 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
 
           <div>
             <div style={{ fontSize: '9px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '2px' }}>
-              Performance
+              {t('dealerVisitForm.infoBar.performance')}
             </div>
             <span style={{
               fontSize: '11px', fontWeight: '600', color: perf.color,
               background: perf.color + '22', padding: '2px 9px', borderRadius: '12px',
             }}>
-              {perf.label}
+              {t(`dealerVisitForm.infoBar.perf${perf.label.replace(' ', '')}`)}
             </span>
           </div>
         </div>
@@ -544,7 +595,7 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
             color: 'var(--text-primary)', fontSize: '12px', fontWeight: '500',
             cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0, marginLeft: 'auto',
           }}>
-            View Dealer <ExternalLink size={12} />
+            {t('dealerVisitForm.buttons.viewDealer')} <ExternalLink size={12} />
           </button>
         )}
       </div>
@@ -563,8 +614,8 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
 
           {/* 1 ─ Topics */}
           <SectionCard>
-            <SectionHeader number="1" title="What did you discuss?"
-              subtitle="Select all topics discussed during this visit." />
+            <SectionHeader number="1" title={t('dealerVisitForm.sections.1.title')}
+              subtitle={t('dealerVisitForm.sections.1.subtitle')} />
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '7px' }}>
               {TOPICS.map(({ label, Icon }) => {
                 const sel = topics.includes(label);
@@ -579,7 +630,7 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
                     transition: 'all 0.15s',
                   }}>
                     <Icon size={12} />
-                    {label}
+                    {t(`dealerVisitForm.topics.${label.toLowerCase()}`)}
                     {sel && (
                       <span style={{
                         width: '13px', height: '13px', borderRadius: '50%',
@@ -598,7 +649,7 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
                   type="text"
                   value={otherTopicText}
                   onChange={(e) => setOtherTopicText(e.target.value)}
-                  placeholder="Describe the other topic discussed..."
+                  placeholder={t('dealerVisitForm.placeholders.otherTopic')}
                   style={{ ...inputStyle(!!otherTopicText), fontSize: '13px', padding: '9px 12px' }}
                 />
               </div>
@@ -607,12 +658,12 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
 
           {/* 2 ─ Visit Notes */}
           <SectionCard>
-            <SectionHeader number="2" title="Visit Notes"
-              subtitle="Add key notes or use voice capture." />
+            <SectionHeader number="2" title={t('dealerVisitForm.sections.2.title')}
+              subtitle={t('dealerVisitForm.sections.2.subtitle')} />
             <textarea
               value={visitNotes}
               onChange={(e) => setVisitNotes(e.target.value.slice(0, 1000))}
-              placeholder="Add your visit notes here..."
+              placeholder={t('dealerVisitForm.placeholders.visitNotes')}
               rows={5}
               style={{
                 width: '100%', resize: 'vertical', padding: '11px 12px',
@@ -621,18 +672,59 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
                 fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', lineHeight: '1.55',
               }}
             />
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '7px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '7px', gap: '7px', flexWrap: 'wrap' }}>
               <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{visitNotes.length} / 1000</span>
-              <div style={{ display: 'flex', gap: '7px' }}>
-                <button type="button" style={{ ...outlineBtn }}><Mic size={12} /> Record Voice Note</button>
-                <button type="button" title="AI Assist" style={{
-                  padding: '7px 9px', borderRadius: '8px',
-                  border: '1px solid rgba(161,0,255,0.3)', background: 'rgba(161,0,255,0.07)',
-                  color: '#A100FF', cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}><Sparkles size={14} /></button>
+              <div style={{ display: 'flex', gap: '7px', flexWrap: 'wrap' }}>
+                {preSummaryNotes !== null && (
+                  <button
+                    type="button"
+                    onClick={handleRevertSummary}
+                    style={{ ...outlineBtn, color: '#F59E0B', border: '1px solid #F59E0B' }}
+                  >
+                    {t('dealerVisitForm.buttons.revertSummary')}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={isRecording ? stopRecording : startRecording}
+                  disabled={isTranscribing || isSummarizing}
+                  style={{
+                    ...outlineBtn,
+                    border: isRecording ? '1px solid #EF4444' : outlineBtn.border,
+                    color: isRecording ? '#EF4444' : outlineBtn.color,
+                    opacity: (isTranscribing || isSummarizing) ? 0.6 : 1,
+                    cursor: (isTranscribing || isSummarizing) ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  <Mic size={12} />
+                  {isRecording ? t('dealerVisitForm.buttons.stopRecording') : isTranscribing ? t('dealerVisitForm.buttons.transcribing') : t('dealerVisitForm.buttons.recordVoice')}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSummarize}
+                  disabled={!visitNotes.trim() || isSummarizing || isRecording || isTranscribing}
+                  title={t('dealerVisitForm.buttons.summarize')}
+                  style={{
+                    padding: '7px 9px', borderRadius: '8px',
+                    border: '1px solid rgba(161,0,255,0.3)', background: 'rgba(161,0,255,0.07)',
+                    color: '#A100FF',
+                    cursor: (!visitNotes.trim() || isSummarizing || isRecording || isTranscribing) ? 'not-allowed' : 'pointer',
+                    opacity: (!visitNotes.trim() || isSummarizing || isRecording || isTranscribing) ? 0.5 : 1,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
+                    fontFamily: 'inherit', fontSize: '12px', fontWeight: '500',
+                  }}
+                >
+                  <Sparkles size={14} />
+                  {isSummarizing ? t('dealerVisitForm.buttons.summarizing') : ''}
+                </button>
               </div>
             </div>
+            {voiceError && (
+              <p style={{ margin: '5px 0 0', fontSize: '11px', color: '#EF4444' }}>{voiceError}</p>
+            )}
+            {summarizeError && (
+              <p style={{ margin: '5px 0 0', fontSize: '11px', color: '#EF4444' }}>{summarizeError}</p>
+            )}
           </SectionCard>
 
           {/* 3 + 4 + 5 ─ one row */}
@@ -640,36 +732,36 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
 
             {/* 3 ─ Biggest Challenge */}
             <SectionCard>
-              <SectionHeader number="3" title="Biggest Challenge" subtitle="What is the main challenge?" />
+              <SectionHeader number="3" title={t('dealerVisitForm.sections.3.title')} subtitle={t('dealerVisitForm.sections.3.subtitle')} />
               <div style={{ position: 'relative' }}>
                 <AlertTriangle size={13} color="#F59E0B" style={{ position: 'absolute', left: '9px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
                 <select value={challenge} onChange={(e) => setChallenge(e.target.value)}
                   style={{ ...inputStyle(!!challenge), paddingLeft: '28px', cursor: 'pointer' }}>
-                  <option value="">Select challenge...</option>
-                  {CHALLENGES.map((c) => <option key={c} value={c}>{c}</option>)}
+                  <option value="">{t('dealerVisitForm.placeholders.selectChallenge')}</option>
+                  {CHALLENGES.map((c) => <option key={c} value={c}>{t(`dealerVisitForm.challenges.${c.toLowerCase().replace(/\s+/g, '_')}`)}</option>)}
                 </select>
               </div>
             </SectionCard>
 
             {/* 4 ─ Biggest Opportunity */}
             <SectionCard>
-              <SectionHeader number="4" title="Biggest Opportunity" subtitle="What is the biggest opportunity?" />
+              <SectionHeader number="4" title={t('dealerVisitForm.sections.4.title')} subtitle={t('dealerVisitForm.sections.4.subtitle')} />
               <div style={{ position: 'relative' }}>
                 <TrendingUp size={13} color="#22C55E" style={{ position: 'absolute', left: '9px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
                 <select value={opportunity} onChange={(e) => setOpportunity(e.target.value)}
                   style={{ ...inputStyle(!!opportunity), paddingLeft: '28px', cursor: 'pointer' }}>
-                  <option value="">Select opportunity...</option>
-                  {OPPORTUNITIES.map((o) => <option key={o} value={o}>{o}</option>)}
+                  <option value="">{t('dealerVisitForm.placeholders.selectOpportunity')}</option>
+                  {OPPORTUNITIES.map((o) => <option key={o} value={o}>{t(`dealerVisitForm.opportunities.${o.toLowerCase().replace(/\s+/g, '_')}`)}</option>)}
                 </select>
               </div>
             </SectionCard>
 
             {/* 5 ─ Competitor Activity */}
             <SectionCard>
-              <SectionHeader number="5" title="Competitor Activity" subtitle="Any competitor activity observed?" />
+              <SectionHeader number="5" title={t('dealerVisitForm.sections.5.title')} subtitle={t('dealerVisitForm.sections.5.subtitle')} />
               <div style={{ display: 'flex', gap: '16px', marginBottom: '10px' }}>
-                <Radio value="Not Observed" selected={competitorMode === 'Not Observed'} onChange={setCompetitorMode} />
-                <Radio value="Observed"     selected={competitorMode === 'Observed'}     onChange={setCompetitorMode} />
+                <Radio value="Not Observed" displayLabel={t('dealerVisitForm.competitor.notObserved')} selected={competitorMode === 'Not Observed'} onChange={setCompetitorMode} />
+                <Radio value="Observed"     displayLabel={t('dealerVisitForm.competitor.observed')}     selected={competitorMode === 'Observed'}     onChange={setCompetitorMode} />
               </div>
               {competitorMode === 'Observed' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '7px' }}>
@@ -685,7 +777,7 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
                           <span style={{
                             position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
                             justifyContent: 'center', fontSize: '9px', color: 'var(--text-primary)',
-                          }}>Uploading…</span>
+                          }}>{t('dealerVisitForm.buttons.uploading')}</span>
                         )}
                         {!photoUploading && (
                           <button type="button" onClick={() => { setCompetitorPhoto(null); setCompetitorPhotoUrl(''); setCompetitorPhotoKey(''); }} style={{
@@ -697,18 +789,18 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
                       </div>
                     ) : (
                       <button type="button" onClick={() => photoRef.current?.click()} style={{ ...outlineBtn }}>
-                        <Camera size={12} /> Upload Photo
+                        <Camera size={12} /> {t('dealerVisitForm.buttons.uploadPhoto')}
                       </button>
                     )}
                     <input ref={photoRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePhoto} />
                     <button type="button" onClick={() => setShowCommentInput((v) => !v)} style={{ ...outlineBtn }}>
-                      {showCommentInput ? '− Hide Comment' : '+ Add Comment'}
+                      {showCommentInput ? t('dealerVisitForm.buttons.hideComment') : t('dealerVisitForm.buttons.addComment')}
                     </button>
                   </div>
                   {showCommentInput && (
                     <input type="text" value={competitorComment}
                       onChange={(e) => setCompetitorComment(e.target.value)}
-                      placeholder="Describe competitor activity..."
+                      placeholder={t('dealerVisitForm.placeholders.competitorActivity')}
                       style={{ ...inputStyle(!!competitorComment) }} />
                   )}
                   {!showCommentInput && competitorComment && (
@@ -723,13 +815,16 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
 
           {/* 6 ─ Actions Agreed */}
           <SectionCard>
-            <SectionHeader number="6" title="Actions Agreed" subtitle="List the key actions agreed during this visit." />
+            <SectionHeader number="6" title={t('dealerVisitForm.sections.6.title')} subtitle={t('dealerVisitForm.sections.6.subtitle')} />
             <div style={{
               display: 'grid',
               gridTemplateColumns: isMobile ? '1fr 90px 32px' : '1fr 100px 120px 100px 32px',
               gap: '8px', marginBottom: '6px', padding: '0 2px',
             }}>
-              {(isMobile ? ['Action', 'Owner', ''] : ['Action', 'Owner', 'Due Date', 'Priority', '']).map((h, i) => (
+              {(isMobile
+                ? [t('dealerVisitForm.actionsTable.colAction'), t('dealerVisitForm.actionsTable.colOwner'), '']
+                : [t('dealerVisitForm.actionsTable.colAction'), t('dealerVisitForm.actionsTable.colOwner'), t('dealerVisitForm.actionsTable.colDueDate'), t('dealerVisitForm.actionsTable.colPriority'), '']
+              ).map((h, i) => (
                 <span key={i} style={{ fontSize: '9px', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{h}</span>
               ))}
             </div>
@@ -739,17 +834,17 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
                 gridTemplateColumns: isMobile ? '1fr 90px 32px' : '1fr 100px 120px 100px 32px',
                 gap: '8px', marginBottom: '7px', alignItems: 'center',
               }}>
-                <input type="text" value={row.action} onChange={(e) => updateAction(idx, 'action', e.target.value)} placeholder="Enter action" style={inputStyle(!!row.action)} />
+                <input type="text" value={row.action} onChange={(e) => updateAction(idx, 'action', e.target.value)} placeholder={t('dealerVisitForm.placeholders.enterAction')} style={inputStyle(!!row.action)} />
                 <select value={row.owner} onChange={(e) => updateAction(idx, 'owner', e.target.value)} style={{ ...inputStyle(!!row.owner), cursor: 'pointer' }}>
-                  <option value="">Owner</option>
-                  {OWNERS.map((o) => <option key={o} value={o}>{o}</option>)}
+                  <option value="">{t('dealerVisitForm.actionsTable.ownerDefault')}</option>
+                  {OWNERS.map((o) => <option key={o} value={o}>{t(`dealerVisitForm.owners.${o.toLowerCase()}`)}</option>)}
                 </select>
                 {!isMobile && (
                   <>
                     <input type="date" value={row.dueDate} onChange={(e) => updateAction(idx, 'dueDate', e.target.value)} style={inputStyle(!!row.dueDate)} />
                     <select value={row.priority} onChange={(e) => updateAction(idx, 'priority', e.target.value)} style={{ ...inputStyle(!!row.priority), color: priorityColor(row.priority), cursor: 'pointer' }}>
-                      <option value="">Priority</option>
-                      {PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}
+                      <option value="">{t('dealerVisitForm.actionsTable.priorityDefault')}</option>
+                      {PRIORITIES.map((p) => <option key={p} value={p}>{t(`dealerVisitForm.priorities.${p.toLowerCase()}`)}</option>)}
                     </select>
                   </>
                 )}
@@ -766,25 +861,25 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
               fontSize: '12px', fontWeight: '500', cursor: 'pointer',
               fontFamily: 'inherit', padding: '4px 0', marginTop: '2px',
             }}>
-              <Plus size={13} /> Add Another Action
+              <Plus size={13} /> {t('dealerVisitForm.buttons.addAnotherAction')}
             </button>
           </SectionCard>
 
           {/* 7 ─ Overall Visit Status */}
           <SectionCard>
-            <SectionHeader number="7" title="Overall Visit Status" subtitle="How was the overall health of this visit?" />
+            <SectionHeader number="7" title={t('dealerVisitForm.sections.7.title')} subtitle={t('dealerVisitForm.sections.7.subtitle')} />
             <div style={{ display: 'flex', gap: '6px' }}>
-              {STATUS_OPTIONS.map(({ label, Icon: StatusIcon, color, bg }) => (
-                <button key={label} type="button"
-                  onClick={() => setOverallStatus(overallStatus === label ? '' : label)}
+              {STATUS_OPTIONS.map(({ value, label, Icon: StatusIcon, color, bg }) => (
+                <button key={value} type="button"
+                  onClick={() => setOverallStatus(overallStatus === value ? '' : value)}
                   style={{
                     flex: 1, padding: '10px 8px', borderRadius: '8px',
                     fontSize: '12px', fontWeight: '600', cursor: 'pointer',
                     fontFamily: 'inherit',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                    border: `1.5px solid ${overallStatus === label ? color : 'var(--border)'}`,
-                    background: overallStatus === label ? bg : 'var(--surface-raised)',
-                    color: overallStatus === label ? color : 'var(--text-secondary)',
+                    border: `1.5px solid ${overallStatus === value ? color : 'var(--border)'}`,
+                    background: overallStatus === value ? bg : 'var(--surface-raised)',
+                    color: overallStatus === value ? color : 'var(--text-secondary)',
                     transition: 'all 0.15s',
                   }}>
                   <StatusIcon size={16} />
@@ -808,10 +903,10 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
           {/* Panel header with tabs */}
           <div style={{ background: 'var(--surface)', padding: '12px 14px 0', flexShrink: 0 }}>
             <h2 style={{ margin: '0 0 2px', fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)' }}>
-              Visit Report (PDF Preview)
+              {t('dealerVisitForm.pdfPanel.title')}
             </h2>
             <p style={{ margin: '0 0 8px', fontSize: '10px', color: 'var(--text-secondary)' }}>
-              This is how your visit report will look.
+              {t('dealerVisitForm.pdfPanel.subtitle')}
             </p>
             <div style={{ display: 'flex', alignItems: 'flex-end', borderBottom: '1px solid var(--border)', gap: '2px' }}>
               {/* Preview tab — always active */}
@@ -820,7 +915,7 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
                 borderBottom: '2px solid #A100FF', color: '#A100FF',
                 fontSize: '11px', fontWeight: '600', cursor: 'default',
                 fontFamily: 'inherit', marginBottom: '-1px',
-              }}>Preview</button>
+              }}>{t('dealerVisitForm.pdfPanel.preview')}</button>
 
               {/* Download PDF */}
               <button type="button" onClick={handleDownloadPdf} style={{
@@ -829,7 +924,7 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
                 borderBottom: '2px solid transparent', color: 'var(--text-secondary)',
                 fontSize: '11px', fontWeight: '400', cursor: 'pointer',
                 fontFamily: 'inherit', marginBottom: '-1px',
-              }}>↓ Download PDF</button>
+              }}>{t('dealerVisitForm.pdfPanel.downloadPdf')}</button>
 
               {/* Print */}
               <button type="button" onClick={handlePrint} style={{
@@ -838,7 +933,7 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
                 borderBottom: '2px solid transparent', color: 'var(--text-secondary)',
                 fontSize: '11px', fontWeight: '400', cursor: 'pointer',
                 fontFamily: 'inherit', marginBottom: '-1px',
-              }}>⎙ Print</button>
+              }}>{t('dealerVisitForm.pdfPanel.print')}</button>
             </div>
           </div>
 
