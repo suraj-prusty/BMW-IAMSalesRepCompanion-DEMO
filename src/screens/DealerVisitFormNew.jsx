@@ -313,18 +313,36 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
   const ZOOM_MAX  = 150;
 
   const handleDownloadPdf = async () => {
-    if (!pdfRef.current) return;
-    const html2pdf = (await import('html2pdf.js')).default;
-    html2pdf()
-      .set({
-        margin: [12, 12],
-        filename: `BMW_Visit_Report_${dealerCode}_${visitDateISO}.pdf`,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, logging: false },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+    const { pdf } = await import('@react-pdf/renderer');
+    const { DealerVisitReportPdf } = await import('../components/DealerVisitReportPdf');
+    const { createElement } = await import('react');
+
+    const blob = await pdf(
+      createElement(DealerVisitReportPdf, {
+        dealerName,
+        dealerCode,
+        dealerLocation,
+        contactDisplay,
+        visitDateISO,
+        topics: topicLabelsForSummary,
+        visitNotes,
+        competitorMode,
+        competitorComment,
+        competitorPhoto,
+        challenge,
+        opportunity,
+        actions,
+        overallStatus,
+        userName: api.getUser()?.name || api.getUser()?.email?.split('@')[0] || '—',
       })
-      .from(pdfRef.current)
-      .save();
+    ).toBlob();
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `BMW_Visit_Report_${dealerCode}_${visitDateISO}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const handlePrint = () => {

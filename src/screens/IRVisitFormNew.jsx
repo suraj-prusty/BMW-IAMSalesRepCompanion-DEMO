@@ -390,18 +390,43 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
   });
 
   const handleDownloadPdf = async () => {
-    if (!pdfRef.current) return;
-    const html2pdf = (await import('html2pdf.js')).default;
-    html2pdf()
-      .set({
-        margin: [12, 12],
-        filename: `BMW_IR_Visit_Report_${irCode}_${visitDateISO}.pdf`,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, logging: false },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+    const { pdf } = await import('@react-pdf/renderer');
+    const { IRVisitReportPdf } = await import('../components/IRVisitReportPdf');
+    const { createElement } = await import('react');
+
+    const blob = await pdf(
+      createElement(IRVisitReportPdf, {
+        irName,
+        irCode,
+        irCategory:      apiIR?.kpis?.ir_category      || '—',
+        iamStatus:       apiIR?.kpis?.iam_status        || 'Registered & Active',
+        servicingDealer: apiIR?.kpis?.servicing_dealer  || '—',
+        visitType,
+        contactMet,
+        topics:          topicLabelsForSummary,
+        visitNotes,
+        buyingBehaviour,
+        competitorMode,
+        competitor,
+        categoryLost,
+        competitorReason,
+        competitorPhoto,
+        saleAchieved,
+        saleRows,
+        totalOrderValue,
+        actions,
+        visitOutcome,
+        newIRsIdentified,
+        userName: api.getUser()?.name || api.getUser()?.email?.split('@')[0] || '—',
       })
-      .from(pdfRef.current)
-      .save();
+    ).toBlob();
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `BMW_IR_Visit_Report_${irCode}_${visitDateISO}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const handlePrint = () => {
