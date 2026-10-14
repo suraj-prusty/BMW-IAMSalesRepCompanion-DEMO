@@ -1,0 +1,190 @@
+BMW IAM Sales Rep Companion
+Data Model / Table Creation for Recommendation-vs-Actual Tracking
+Date: 2026-09-22
+
+This document covers table design only.
+Primary design: single recommendation table written on manager Save.
+
+
+====================================================================
+0. APPROACH IN ONE PARAGRAPH
+====================================================================
+
+When the manager at the start of the week selects KPIs(upto 2) and clicks Save/Select, the backend runs the
+calculations of the kpis . There is no weightage system as of now. based on if 1 or 2 kpis are selected
+the KPI values for all the dealers are calculated, then each dealer is assigned to there respective sales rep.
+And from the list top 3 are recommended for the week and is saved into ONE table
+(recommendation). From which the sales rep can move down 1 or all recommended
+dealers for the week to below(POSTPONED) or he can start visit and it will be captured in the visit_capture table.
+A job will be running(not a concern) every sunday and will see if visit capture was done for any dealers if done then the table 
+will be updated with that row being now as ACCEPTED and if not found in visit_capture then assumed POSTPONED.
+
+Each recommended Dealer/IR is one row. The KPI
+selected is stored on each row of that save. Actual visits stay in the
+existing visit_capture table. Comparing recommendation to visit_capture gives
+recommended-vs-actual. Manager, rep, and dealer identities come from the
+onboarding template master data and are not re-created.
+
+Tables involved:
+- Reuse: people, coverage, dealer_assignment (from onboarding template).
+- Create: recommendation (one table).
+- Modify: visit_capture (add one optional link column).
+
+
+====================================================================
+1. MASTER DATA ALREADY PROVIDED BY THE ONBOARDING TEMPLATE
+====================================================================
+
+Reuse these; do not duplicate them.
+
+TABLE: people
+- market         VARCHAR   REQUIRED
+- employee_id    VARCHAR   REQUIRED
+- person_id      VARCHAR   REQUIRED   PRIMARY KEY
+- work_email     VARCHAR   REQUIRED   unique
+- full_name      VARCHAR   REQUIRED
+- role           VARCHAR   REQUIRED   values: rep | manager
+- manager_id     VARCHAR   OPTIONAL   FK -> people.person_id
+- status         VARCHAR   REQUIRED
+- start_date     DATE      REQUIRED
+- end_date       DATE      OPTIONAL
+
+TABLE: coverage
+- market                       VARCHAR  REQUIRED
+- covering_rep_employee_id     VARCHAR  REQUIRED
+- covering_rep_id              VARCHAR  REQUIRED  FK -> people.person_id
+- covered_rep_employee_id      VARCHAR  REQUIRED
+- covered_rep_id               VARCHAR  REQUIRED  FK -> people.person_id
+- reason                       VARCHAR  OPTIONAL
+- start_date                   DATE     REQUIRED
+- end_date                     DATE     REQUIRED
+
+TABLE: dealer_assignment
+- market            VARCHAR   REQUIRED
+- dealer_group      VARCHAR   OPTIONAL
+- dealer_id         VARCHAR   REQUIRED   PRIMARY KEY (dealer/account id)
+- dealer_name       VARCHAR   REQUIRED
+- rep_employee_id   VARCHAR   REQUIRED
+- rep_id            VARCHAR   REQUIRED   FK -> people.person_id
+
+These supply manager identity, rep identity, and dealer identity, so the new
+table below only references them by id.
+
+
+====================================================================
+2. NEW TABLE: recommendation  (the single table)
+====================================================================
+
+Purpose:
+On manager Save, compute the ranked Dealer/IR list and store it here. One row
+per recommended Dealer/IR. The KPI configuration is stored on each row so the
+exact configuration used at that moment is preserved with the result.
+
+TABLE: recommendation
+- recommendation_id       VARCHAR/UUID   REQUIRED   PRIMARY KEY
+- save_batch_id           VARCHAR/UUID   REQUIRED   groups all rows from one Save
+- market                  VARCHAR        REQUIRED   FK -> people.market
+- manager_id              VARCHAR        REQUIRED   FK -> people.person_id
+- sales_rep_id            VARCHAR        REQUIRED   FK -> people.person_id
+- planning_period_label   VARCHAR        REQUIRED   e.g. 2026-W39
+- planning_period_start   DATE           REQUIRED
+- planning_period_end     DATE           REQUIRED
+- selected_kpis_json      JSON           REQUIRED   KPI (the ones selected will be "critical" and others "low")
+- generated_at            TIMESTAMPTZ    REQUIRED   when Save produced the row
+- dealer_id               VARCHAR        REQUIRED   FK -> dealer_assignment.dealer_id
+- account_type            VARCHAR        REQUIRED   DEALER | IR
+- rank                    INTEGER        OPTIONAL   rank the system produced
+- dealer_sales            Float          REQUIRED
+- carry_over_count        INTEGER        REQUIRED   consecutive weeks carried
+                                                    unvisited (0 on first pick)
+- rep_action              VARCHAR        OPTIONAL   RECOMMENDED | ACCEPTED |
+                                                    POSTPONED | EXPIRED
+- action_at               TIMESTAMPTZ    OPTIONAL
+- action_by               VARCHAR        OPTIONAL   FK -> people.person_id
+
+Unique constraints:
+- save_batch_id + dealer_id
+- save_batch_id + rank
+
+Field meaning:
+- selected_kpis_json / manager_id / period = the manager's configuration,
+  repeated on each dealer row of the same save_batch_id.
+- rank = what the SYSTEM recommended (do not change it).
+- carry_over_count = how many consecutive weeks this dealer has been carried
+  unvisited. Starts at 0 on first pick; the Sunday job increments it each week
+  the dealer is POSTPONED.
+- rep_action lifecycle (per weekly row):
+    RECOMMENDED - open; system wrote it this week, no outcome yet.
+    ACCEPTED    - a submitted visit exists for the dealer this week.
+    POSTPONED   - not visited this week; the dealer is carried into next week
+                  as a new RECOMMENDED row.
+    EXPIRED     - carried ~4 weeks (one month) without a visit. The row is
+                  kept for history but the dealer is no longer carried forward.
+- A dealer the rep visits that was NOT recommended has no recommendation row;
+  it is found by joining visit_capture back to recommendation (visited but not
+  recommended).
+
+selected_kpis_json example:
+{
+  "purchaseRevVsTarget": {"selected": true, "status": "critical"},
+  "custMoM":             {"selected": true, "status": "critical"},
+  "revYoY":              {"selected": false, "status": "low"},
+  "abc":                 {"selected": false, "status": "low"}
+}
+
+Rules that keep this safe:
+- One Save = one save_batch_id = many recommendation rows.
+- Never update selected_kpis_json / manager / period in place. A re-save
+  writes a new save_batch_id (a new batch of rows).
+- Do NOT collapse further into a single row holding all dealers in one JSON
+  blob. One row per dealer is required so each recommended dealer can be
+  linked to its actual visit and its rep action.
+
+
+====================================================================
+3. EXISTING TABLE: visit_capture  (one added column)
+====================================================================
+
+Keep the existing visit record. Add one optional link column so a visit can
+point back to the recommendation row.
+
+TABLE: visit_capture (existing shape + one new column)
+- visit_id                VARCHAR/UUID   REQUIRED   PRIMARY KEY  (exists)
+- dealer_id / account id  VARCHAR        REQUIRED   (exists)
+- sales_rep_id            VARCHAR        REQUIRED   FK -> people.person_id
+- form_type / visit_type  VARCHAR        REQUIRED   dealer | ir  (exists)
+- status                  VARCHAR        REQUIRED   draft | submitted (exists)
+- visit_date              DATE           REQUIRED   (exists)
+- form_data               JSON           REQUIRED   (exists)
+- submitted_by            VARCHAR        REQUIRED   (exists)
+- updated_at              TIMESTAMPTZ    REQUIRED   (exists)
+- recommendation_id       VARCHAR/UUID   OPTIONAL   NEW: FK -> recommendation
+
+Notes:
+- recommendation_id is optional: ad-hoc visits have no recommendation.
+- Even when null, a visit can still be matched to a recommendation by
+  sales_rep_id + dealer_id + planning period.
+
+
+====================================================================
+4. HOW RECOMMENDED-VS-ACTUAL IS COMPUTED
+====================================================================
+
+Join path:
+
+  recommendation (config + recommended dealers + rep action)
+      -> visit_capture (was it actually visited? outcome)
+
+Answers:
+- Manager KPI config used:        recommendation.selected_kpis_json
+- What was recommended + order:   recommendation.rank
+- Outcome per recommended dealer: recommendation.rep_action
+- Who was actually visited:       visit_capture (status = submitted)
+- Recommended but NOT visited:    recommendation rows with no submitted visit
+                                  (rep_action POSTPONED or EXPIRED)
+- Visited but NOT recommended:    submitted visits with no matching
+                                  recommendation row
+- Conversion rate:                submitted visits matched to recommendation /
+                                  recommendation rows for the period
+
+

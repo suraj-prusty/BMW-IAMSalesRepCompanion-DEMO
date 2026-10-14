@@ -10,6 +10,12 @@ import {
 import { kpiColor } from '../data/dealers';
 import { dataService } from '../data/dataService';
 import { api } from '../services/api';
+import { isoWeekLabel } from '../services/recommendationClient';
+import {
+  MARCUS_DEALER_CODES,
+  SOFIA_DEALER_CODES,
+  LOGIN_REP_ID_TO_SALES_REP_ID,
+} from '../config/demoRepDealers';
 
 // ── KPI Strip — computed inside Dashboard from real data ───
 
@@ -1393,7 +1399,8 @@ function PrioritizationView({ accountFilter, showAll, setShowAll }) {
 //   comp_customer_count — current_month_customer_count, last_year_same_month_customer_count, growth_degrowth_pct, customer_growth_health_tag
 //   mom_decline — categories_with_decline_pct text
 //   high_turnover_low_activity — reserved for future display
-function normalizeApiDealer(raw) {
+export function normalizeApiDealer(raw) {
+  if (raw.__localDemo) return raw;
   const kpis        = raw.kpis || {};
   const abc         = kpis.abc_segmentation           || {};
   const purchaseRvt = kpis.purchase_revenue_vs_target || {};
@@ -1535,25 +1542,19 @@ export default function Dashboard() {
   const [dealersLoading, setDealersLoading] = useState(true);
 
   useEffect(() => {
-    api.getDealers()
-      .then((data) => {
-        console.log('[GET /dealers]', data);
-        const list = Array.isArray(data) ? data : Array.isArray(data?.dealers) ? data.dealers : [];
-        setApiDealers(list.map(normalizeApiDealer));
-      })
-      .catch((err) => console.error('[GET /dealers] error:', err))
-      .finally(() => setDealersLoading(false));
+    setApiDealers(api.getLocalDemoDealers());
+    setDealersLoading(false);
   }, []);
 
   const [showAllDealers,  setShowAllDealers]  = useState(false);
   const [plannedIds,      setPlannedIds]      = useState([]);
   const [planInitialized, setPlanInitialized] = useState(false);
+  const [recsSettled,     setRecsSettled]     = useState(false);
+  const [recsError,       setRecsError]       = useState('');
   const [dragOver,        setDragOver]        = useState(false);
   const [dealerSearch,    setDealerSearch]    = useState('');
 
   const DEALER_PAGE_SIZE = 50;
-  const MARCUS_DEALER_CODES = new Set([23100, 10581, 33512, 16258, 11107, 16215, 16285, 25025].map(String));
-  const SOFIA_DEALER_CODES  = new Set([22312, 13206, 16267, 22181, 32001, 10541, 15110, 16326].map(String));
   const ALL_DEMO_DEALER_CODES = new Set([...MARCUS_DEALER_CODES, ...SOFIA_DEALER_CODES]);
 
   const managerSelectedRepId = isManager ? sessionStorage.getItem('managerSelectedRepId') : null;
@@ -1615,16 +1616,44 @@ export default function Dashboard() {
       .slice(0, 3);
   }, [apiDealers, demoDealers, managerSelectedKpis]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Seed "Recommended for Today" from auto-recommendations once API data arrives
+  // Seed "Recommended for Today" from auto-recommendations once the saved-batch lookup has settled,
+  // so the fallback never flashes ahead of (or silently replaces) the manager's saved picks.
   useEffect(() => {
-    if (!planInitialized && recommendedDealers.length > 0) {
+    if (!planInitialized && recsSettled && recommendedDealers.length > 0) {
       setPlannedIds(recommendedDealers.map(d => d.id));
       setPlanInitialized(true);
     }
+  }, [apiDealers.length, recsSettled]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Prefer the manager's saved recommendation batch for this rep + week, if any.
+  // With none saved, or if the lookup fails (error shown), the computed seed above is used.
+  useEffect(() => {
+    if (apiDealers.length === 0) return;
+    const salesRepId =
+      managerSelectedRepId === 'marcus-schmidt' ? 'marcus.schmidt' :
+      managerSelectedRepId === 'sofia-keller'   ? 'sofia.keller'   :
+      LOGIN_REP_ID_TO_SALES_REP_ID[currentUser?.repId] || currentUser?.email;
+    if (!salesRepId) { setRecsSettled(true); return; }
+    const today = new Date();
+    const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    api.getRecommendations(salesRepId, isoWeekLabel(todayIso))
+      .then((rows) => {
+        if (!rows || rows.length === 0) return;
+        const ids = demoDealers
+          .filter((d) => rows.some((r) => String(r.dealer_id) === String(d.id)))
+          .map((d) => d.id)
+          .slice(0, 3);
+        if (ids.length > 0) {
+          setPlannedIds(ids);
+          setPlanInitialized(true);
+        }
+      })
+      .catch((err) => setRecsError(err?.message || ''))
+      .finally(() => setRecsSettled(true));
   }, [apiDealers.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Plan state — "Recommended for Today" capped at 3, "My Dealerships" = the rest
-  const plannedDealers = apiDealers.filter(d => plannedIds.includes(d.id));
+  const plannedDealers = demoDealers.filter(d => plannedIds.includes(d.id));
   const otherDealers   = demoDealers.filter(d => !plannedIds.includes(d.id));
   const canPlanMore    = plannedDealers.length < 3;
 
@@ -1806,10 +1835,15 @@ export default function Dashboard() {
               )}
             </div>
             <div style={{ fontSize: '11px', color: 'var(--text-muted)', paddingLeft: '13px', marginBottom: '14px' }}>
-              {dealersLoading ? t('dashboard.computingRecommendations')
+              {dealersLoading || !recsSettled ? t('dashboard.computingRecommendations')
                 : t('dashboard.slotsFilled', { n: plannedDealers.length })}
             </div>
-            {dealersLoading ? (
+            {recsError && (
+              <div style={{ fontSize: '12px', color: '#EF4444', paddingLeft: '13px', marginBottom: '12px', lineHeight: 1.35 }}>
+                {recsError} Showing computed suggestions instead.
+              </div>
+            )}
+            {dealersLoading || !recsSettled ? (
               <div style={{ padding: '16px', color: 'var(--text-secondary)', fontSize: '13px' }}>
                 {t('dashboard.computingRecommendations')}
               </div>

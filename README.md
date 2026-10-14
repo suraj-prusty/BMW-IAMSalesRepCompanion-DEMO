@@ -1,209 +1,147 @@
-# Intelligent IAM Copilot — POC Application
+# Intelligent IAM Copilot
 
-## Overview
+A proof-of-concept React application for BMW IAM field sales teams. It supports dealer planning and briefing, dealer and independent-repairer (IR) visit capture, manager team views, and AI-assisted sales workflows. The UI and app flow are being stabilized before connecting the application to its real data source.
 
-A proof-of-concept field intelligence application built for BMW's **Global IAM (Independent Aftermarket) 2026+** program. The app serves as a digital companion for IAM field sales executives (e.g., Marcus Schmidt — C1 Europe territory) to plan, execute, and report on dealer visits.
+## Stack
 
-## Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Frontend | React 18 + Vite + Tailwind CSS |
-| Routing | React Router v6 |
-| Icons | Lucide React |
-| Backend | Express.js with REST API endpoints |
-| AI/LLM | Azure OpenAI (GPT-4o), **server-side proxy only** |
-| Data | Static CSV → `dataService.js` abstraction layer (DB-ready) |
-| Auth | Backend `/api/auth/login` endpoint with session token |
-| Config | `.env` file (server-side secrets, never bundled) |
-
-## Project Structure
-
-```
-Intelligent_IAM_Copilot/
-├── index.html                  # Entry HTML
-├── package.json                # Dependencies & scripts
-├── vite.config.js              # Vite bundler + API proxy config
-├── tailwind.config.js          # Tailwind config
-├── postcss.config.js           # PostCSS config
-├── server.js                   # Express API backend + static file server
-├── .env                        # Server-side secrets (NEVER committed)
-├── .env.example                # Template for new developers
-├── .gitignore                  # Excludes .env, node_modules, dist/
-├── BMW_logo.png                # BMW branding asset
-├── BMW.png                     # BMW branding asset
-├── SETUP.bat                   # Windows setup script
-│
-├── RAG_Docs/
-│   ├── BWIR_Tenderdocument.pdf          # BMW tender document (53 pages, 44 work packages)
-│   ├── 20260220_Accenture GmbH_BWIR_Offer_Global_IAM2026+.pdf  # Accenture offer document
-│   └── Initial Stage Overview.xlsx      # Initial stage planning
-│
-├── BMW Global IAM - Agentic Solution Overview 1.pptx  # Accenture proposal deck
-│
-├── proposed-architecture.md    # Production architecture proposal
-├── TODO.md                     # Prioritised implementation backlog
-│
-└── src/
-    ├── main.jsx                 # React entry point
-    ├── App.jsx                  # Root component + routing + guards
-    ├── index.css                # Global styles (Tailwind + custom)
-    │
-    ├── services/
-    │   └── api.js               # Centralised API client (auth, chat, generate)
-    │
-    ├── components/
-    │   ├── Navbar.jsx           # Top navigation bar (logo, dealer/IR toggle, user menu)
-    │   ├── StepProgress.jsx     # Visit workflow step indicator (Briefing → Capture → Review)
-    │   ├── BackButton.jsx       # Reusable back navigation
-    │   └── ChatBot.jsx          # RAG-powered AI chatbot (via backend API)
-    │
-    ├── screens/
-    │   ├── Login.jsx            # Login page (authenticates via backend API)
-    │   ├── Dashboard.jsx        # Main dashboard: KPIs, dealer cards, weekly plan
-    │   ├── DealerBriefing.jsx   # Pre-visit briefing: AI pitch, AI summary, KPIs, issues, agenda
-    │   ├── VisitCapture.jsx     # On-site visit data capture form
-    │   ├── ReviewSubmit.jsx     # Post-visit: AI summary, follow-up email, action plan
-    │   └── Success.jsx          # Visit submission confirmation with confetti
-    │
-    ├── data/
-    │   ├── dealers.csv          # Master dealer list (6 dealers)
-    │   ├── dealers.js           # Re-exports from dataService + SCREEN_CONTEXT
-    │   ├── dataService.js       # 🆕 Data Abstraction Layer (swap CSV → DB here)
-    │   ├── csvLoader.js         # Generic CSV → JSON parser
-    │   ├── ragKnowledge.js      # Hardcoded RAG knowledge base (BMW IAM documentation)
-    │   │
-    │   ├── alpha-garage/        # Per-dealer CSV data folders (6 total)
-    │   │   ├── kpis.csv         # KPI metrics (8 KPIs)
-    │   │   ├── issues.csv       # Known issues (3 per dealer)
-    │   │   ├── agenda.csv       # Visit agenda items (5 per dealer)
-    │   │   ├── contacts.csv     # Key contacts (5-6 roles)
-    │   │   ├── actions.csv      # All actions
-    │   │   ├── last_visit.csv   # Last visit metadata (date + attendees)
-    │   │   ├── visit_notes.csv  # Previous visit notes
-    │   │   └── open_actions.csv # Open/pending actions (3 per dealer)
-    │   ├── bavaria-motors/
-    │   ├── rhein-auto/
-    │   ├── nord-parts/
-    │   ├── west-drive/
-    │   └── berlin-auto/
-    │
-    └── utils/
-        └── dateUtils.js         # Date formatting, ISO week, "X days ago", etc.
-```
-
-## Architecture
-
-### Security Model
-```
-Browser (React SPA)  ──→  Express API (/api/*)  ──→  Azure OpenAI
-     ↑                         ↑
-  0 secrets              .env (API key)
-  in bundle              server-side only
-```
-
-All AI calls go through the Express backend. The Azure OpenAI API key lives in `.env` and is **never exposed to the browser**. The frontend uses `src/services/api.js` as a centralized HTTP client.
-
-### Data Abstraction Layer
-`src/data/dataService.js` is the single entry point for all data access. Currently it reads from CSV files. To migrate to a database, **only this file** needs to change — no other component touches data directly.
-
-### API Endpoints
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/api/health` | GET | Health check |
-| `/api/auth/login` | POST | Authenticate user, returns token |
-| `/api/ai/chat` | POST | ChatBot messages with system context |
-| `/api/ai/generate` | POST | General-purpose AI generation (pitch, summary, email) |
+- React 18, Vite 5, and React Router 6
+- Express for AI, media, and production static-file routes
+- API integrations for dealer, insight, planning, and visit data; production data-source integration is pending
+- AWS Bedrock for generated content, Azure OpenAI for the general chat route, and AWS Transcribe/S3 for voice notes and photos
+- CSV-backed local sample data, `i18next` localization, and Lucide icons
 
 ## Application Flow
 
+```text
+Login
+  ├─ Sales representative → Dashboard → Dealer briefing → Dealer visit capture
+  └─ Manager              → Team view → Representative dashboard
+
+IR visit capture is available at /ir-visit-capture/:id.
 ```
-Login (API auth) → Dashboard → Dealer Briefing → Visit Capture → Review & Submit → Success
-     ↑                ↑                ↑                   ↑               ↑
-  /api/auth        dataService      api.generate         dataService    api.generate
-  /login           getDealers()     (pitch/summary)      getDealerData() (summary/email)
+
+The main routes are:
+
+| Route | Purpose |
+|---|---|
+| `/login` | Demo sign-in |
+| `/team` | Manager view of representative KPIs and team documents |
+| `/dashboard` | Territory dashboard, account prioritization, and visit planning |
+| `/dealer/:id` | Dealer data, insights, and AI-generated briefing content |
+| `/visit-capture/:id` | Current dealer visit form |
+| `/ir-visit-capture/:id` | Current IR visit form |
+| `/visit/:id` | Compatibility route that renders the current dealer visit form |
+| `/submit/:id` | Older review-and-submit screen |
+| `/success` | Older submission confirmation screen |
+
+The newer dealer and IR forms save drafts or submitted visits through the data API. They also support notes, agreed actions, photos, PDF export/printing, and voice transcription. Their submit action currently saves the form in place; it does not continue to the older review or success screens. Those older screens remain routed in the app but are not part of the current briefing-to-visit path.
+
+## Source Map
+
+```text
+src/
+├── App.jsx                    # Theme context, routes, guards, and shared layout
+├── main.jsx                   # React entry point; loads global CSS and i18n
+├── i18n.js                    # Registers English, German, and French translations
+├── index.css                  # Global theme and shared styles
+├── components/                # Navbar, progress, chatbot, team documents, voice player, etc.
+├── screens/                   # Login, dashboard, briefing, team, visits, and result screens
+├── services/
+│   ├── api.js                 # Client-side auth and HTTP clients for the API services
+│   └── dealerScoring.js       # KPI scoring, filtering, and prioritization
+├── data/
+│   ├── dataService.js         # Parses local CSV data and exposes sample-data helpers
+│   ├── csvLoader.js           # CSV parser
+│   ├── teamReps.js            # Mock manager-view representative metrics
+│   ├── teamDocuments.js       # Mock manager document dataset
+│   ├── ragKnowledge.js        # Legacy IAM knowledge content
+│   └── */                     # Dealer CSVs, planning KPIs, parts growth, and campaigns
+├── hooks/useVoiceRecorder.js  # Browser recording and transcription workflow
+├── config/kpiWeights.config.js # Seasonal KPI scoring weights
+├── locales/                   # English, German, French, plus an unregistered Chinese file
+└── utils/dateUtils.js         # Date and week formatting helpers
 ```
 
-1. **Login** (`/login`): Authenticates via `POST /api/auth/login`. Credentials live in `.env` server-side. Sets auth token + user in session.
+The application is still a demo: many displayed values are hardcoded, and local CSVs and mock datasets are used throughout the UI. `dataService.js` supplies sample dealer records and planning/campaign data; manager metrics and team documents are mock data. Some screens call existing API endpoints, but the real data source will be connected after the UI and app flow are finalized. Until then, treat displayed business data as illustrative rather than authoritative.
 
-2. **Dashboard** (`/dashboard`): KPI summary strip (5 KPIs), planned dealer list for today, other dealers in territory, and a weekly plan modal. Dealer/IR toggle exists in navbar but no IR data is implemented yet.
+Weekly recommendation and visit-capture rows are saved locally as JSON table mirrors in `table_structures/recommendation.json` and `table_structures/visit_capture.json`. They are shared by the manager and sales-rep sessions through the local Express service, and are intended to remain in Git as working reference data until the schema is finalized. No AWS connection is needed for this local recommendation/visit workflow.
 
-3. **Dealer Briefing** (`/dealer/:id`): Pre-visit intelligence. Shows KPI bar, expandable KPI table, **AI Summary** (pre-visit intelligence brief), **AI Opening Pitch** (personalised sales pitch for the visit) — both generated via `POST /api/ai/generate`. Also shows known issues, visit agenda, open actions, and last visit notes from `dataService`.
+## Backend Boundaries
 
-4. **Visit Capture** (`/visit/:id`): Structured form for on-site visit data. Covers contact confirmation, KPI snapshot, issues confirmation (mark as confirmed / N/A / add to action plan), agenda completion, custom issues capture, and general notes.
+The browser has two main API paths:
 
-5. **Review & Submit** (`/submit/:id`): Post-visit consolidation. Shows captured data, AI-generated post-visit meeting summary, AI-generated follow-up email draft — both via `POST /api/ai/generate`. Agreed actions with owners and due dates, and next visit scheduling.
+- `VITE_API_URL` points to the currently wired data API endpoints for dealer lookups, insights, ABC segmentation, and visit draft/save/search. These endpoints do not mean the production data-source integration is complete. When unset, the client uses `/api`; Vite proxies that prefix to `http://localhost:8080` by default.
+- `/local-api` is the file-backed local CRUD service. Vite always proxies it to the local Express server (`http://localhost:8080` by default), independently of `VITE_API_URL`.
+- `VITE_AI_URL` points to the Express service for `/api/ai/*`, photo upload, and signed media URLs. For local development, set it to `http://localhost:8080`.
 
-6. **Success** (`/success`): Confirmation with confetti animation and key submission details.
+The Express server in `server.js` handles:
 
-7. **ChatBot**: Floating chat widget on Dashboard, Dealer Briefing, and Visit Capture screens. Uses `POST /api/ai/chat` with RAG knowledge base injected server-side. Context-aware based on current screen.
+- `/api/ai/chat` with Azure OpenAI
+- `/api/ai/generate` with AWS Bedrock
+- `/api/ai/transcribe` with AWS Transcribe and S3 audio storage
+- `/api/upload-photo` and `/api/photo-url` with S3
+- Static serving of `dist/` and history fallback in production
 
-## Data Model
+The typed Parts and Dealer Transactions chatbot calls a separately configured AWS API Gateway URL directly from `src/services/api.js`. The Promotion & Campaign chat mode is a placeholder.
 
-### Dealers (`dealers.csv`)
-| Field | Description |
-|-------|-------------|
-| id | Unique dealer identifier (slug) |
-| name | Display name |
-| location | Address/city |
-| lastVisitDate | Date of last visit (DD Mon YYYY) |
-| visitTime | Scheduled visit time |
-| salesVsTarget | Sales achievement % |
-| pl24Adoption | PL24 digital adoption % |
-| aosAdoption | AOS basket adoption % |
-| dbMargin | Dealer contribution margin % |
-| priority | HIGH / MED / LOW |
-| plannedToday | Is visit planned for today? |
+### Storage backend: debug mode (local files) or AWS
 
-### Per-Dealer KPIs (`kpis.csv`)
-| Field | Description |
-|-------|-------------|
-| metric | KPI name |
-| actual | Current value |
-| target | Target value |
-| color | Display color (hex) |
-| note | Contextual note |
+One flag decides where **recommendations and visit capture** are saved. Set it in `.env` and **restart `npm run dev`**:
 
-### Issues, Agenda, Contacts, Actions, Visit Notes, Open Actions
-Each dealer folder contains the same 8 CSV files with dealer-specific data. The app loads them at build time via Vite's `?raw` import, parses them with `csvLoader.js`, and exposes them through the `DEALER_DATA` map in `dealers.js`.
+```
+VITE_DEBUG_MODE=true    # default: local JSON files in table_structures/ (needs npm run dev:server)
+VITE_DEBUG_MODE=false   # AWS: Lambda + DynamoDB through the two HTTP APIs below
+VITE_VISIT_CAPTURE_API_URL=https://<visit-api-id>.execute-api.eu-central-1.amazonaws.com
+VITE_RECOMMENDATION_API_URL=https://<recommendation-api-id>.execute-api.eu-central-1.amazonaws.com
+```
 
-## Key Limitations (POC-specific)
+- Vite only exposes `VITE_`-prefixed variables to the browser, hence `VITE_DEBUG_MODE`. Unset or any value other than `false` means debug mode (local).
+- Leave `VITE_API_URL` alone; it belongs to the dealer data API.
+- With debug mode off, the browser calls the APIs directly, so each API's CORS settings must allow the app's origin (currently `http://localhost:5173`). The recommendation API must have CORS enabled before this works.
+- Local and AWS data are separate; switching modes does not copy anything across. Local mode links a submitted visit to its recommendation on the server; AWS mode looks up the rep's current-week recommendation for that dealer when the visit is saved, and saves the visit unlinked if the lookup fails.
+- AWS has no delete or batch-create route for recommendations, so each manager Save writes a new batch (one POST per row) and the app reads only the newest batch for a rep and week. Older batches stay in the table; a reconciliation job must ignore them.
+- Both AWS APIs are **unauthenticated** and `sales_rep_id` is only a filter that can be spoofed. Use AWS mode for controlled POC testing only; data goes to shared DynamoDB tables.
+- Client tests (fetch is mocked, no AWS calls): `npm run test:client`.
 
-1. **No database** — All data is static CSV, no CRUD operations, no persistence of visit data. The `dataService.js` abstraction layer is ready for DB swap.
-2. **Demo auth only** — Backend validates against `.env` credentials with a demo token. Needs Azure AD/Entra ID SSO for production.
-3. **Client-side RAG** — Knowledge base is a 300+ line hardcoded JS string, not a real vector retrieval system.
-4. **Single territory** — Hardcoded to C1 Europe (Marcus Schmidt), no multi-market support.
-5. **6 dummy dealers** — Not representative of real scale (tender covers hundreds across multiple markets).
-6. **No IR data** — Despite the Dealer/IR toggle in Navbar, no Independent Repairer data exists.
-7. **No persistence** — Visit data captured but not stored or retrievable across sessions.
-8. **No NSC integration** — Cannot upload/download reports from BMW NSC portal/SharePoint.
-9. **No multi-language support** — Tender requires German, English, and native market languages.
-10. **No Field Force Orchestration** — Only the field rep's view exists, no management oversight.
-11. **No Route Planning** — Visit scheduling is hardcoded, no optimization.
-12. **No Collision Programme / Total Loss Avoidance** — WPs 41-44 from tender not addressed.
+## Local Development
 
-## Getting Started
+Requirements: Node.js 18 or later and npm. The recommendation and visit-capture workflow uses local files and works without AWS. Credentials/access are only needed for external data or AI/media features.
 
-```bash
-# 1. Install dependencies
+```powershell
 npm install
+Copy-Item .env.example .env
+```
 
+Configure `.env` only for features that need external services. `VITE_LOCAL_API_URL` is optional; it defaults to the local Express server. `VITE_API_URL` is only needed for the existing remote dealer data API. `VITE_AI_URL`, AWS credentials and `S3_BUCKET`, Azure OpenAI values, and Bedrock access are only needed for AI, transcription, photo, and media features. Do not commit `.env` or put provider secrets in `VITE_*` variables.
 
-# 2. Set up environment (copy the template)
-copy .env.example .env
-# Edit .env with your Azure OpenAI credentials
+Run each command in its own terminal:
 
-# 3. Development — two terminals:
-#    Terminal 1: Start backend API (port 8080)
-npm run dev:server
-#    Terminal 2: Start Vite dev server (port 5173, proxies /api → 8080)
+Terminal 1, frontend:
+
+```sh
 npm run dev
+```
 
-# 4. Production build + serve (single terminal, port 8080)
+Terminal 2, Express API/media service:
+
+```sh
+npm run dev:server
+```
+
+Vite prints the frontend URL (normally `http://localhost:5173`). To build and serve the frontend through Express:
+
+```powershell
 npm run build
 npm start
-
-# Or use the batch file
-SETUP.bat
 ```
 
+`SETUP.bat` installs dependencies and starts only Vite; it does not start the Express service.
+
+## Demo Limitations
+
+- Authentication is demo-only and implemented in the browser with hardcoded demo profiles. Route guards are not production authorization.
+- Many UI values are hardcoded or come from local CSV/mock data. The real data source will be integrated after the UI and app flow are fixed; current business values are illustrative. The local CSV has no customer-MoM field, so recommendation demo scoring temporarily uses monthly sales growth as that KPI's proxy.
+- AI providers are split across services. The typed chat endpoint is hardcoded in the client, and the campaign assistant is not implemented.
+- English, German, and French are registered with i18next. A Chinese locale file exists but is not currently enabled.
+- The `/submit` and `/success` experience is an older path and is not reached by the current dealer or IR form submit actions.
+- This is a demo, not a production-ready secure or offline-capable field application.

@@ -163,6 +163,7 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
   const [visitId,    setVisitId]    = useState(null);
   const [isSaving,   setIsSaving]   = useState(false);
   const [saveStatus, setSaveStatus] = useState('');
+  const [saveError,  setSaveError]  = useState('');
 
   useEffect(() => {
     if (!irId) { setApiLoading(false); setVisitId(crypto.randomUUID()); return; }
@@ -205,7 +206,12 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
               setVisitId(crypto.randomUUID());
             }
           })
-          .catch(() => setVisitId(crypto.randomUUID()));
+          .catch((err) => {
+            console.error('[IRVisitFormNew] getDraftVisitCapture error:', err?.message);
+            setSaveError(err?.message || '');
+            setSaveStatus('error');
+            setVisitId(crypto.randomUUID());
+          });
       })
       .catch((err) => { console.error('[IRVisitFormNew] getDealerByCode:', err); setVisitId(crypto.randomUUID()); })
       .finally(() => setApiLoading(false));
@@ -428,7 +434,7 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
     if (!visitId) return;
     setIsSaving(true); setSaveStatus('');
     try { await api.saveVisitCapture(irCode, visitId, buildPayload('draft')); setSaveStatus('saved'); }
-    catch { setSaveStatus('error'); }
+    catch (err) { setSaveError(err?.message || ''); setSaveStatus('error'); }
     finally { setIsSaving(false); }
   };
 
@@ -436,7 +442,7 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
     if (!visitId) return;
     setIsSaving(true); setSaveStatus('');
     try { await api.saveVisitCapture(irCode, visitId, buildPayload('submitted')); setSaveStatus('submitted'); }
-    catch { setSaveStatus('error'); }
+    catch (err) { setSaveError(err?.message || ''); setSaveStatus('error'); }
     finally { setIsSaving(false); }
   };
 
@@ -491,7 +497,7 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
           {saveStatus === 'draft_restored' && <span style={{ fontSize: '11px', color: '#F59E0B' }}>{t('irVisitForm.saveStatus.draftRestored')}</span>}
           {saveStatus === 'saved'          && <span style={{ fontSize: '11px', color: '#22C55E' }}>{t('irVisitForm.saveStatus.saved')}</span>}
           {saveStatus === 'submitted'      && <span style={{ fontSize: '11px', color: '#22C55E' }}>{t('irVisitForm.saveStatus.submitted')}</span>}
-          {saveStatus === 'error'          && <span style={{ fontSize: '11px', color: '#EF4444' }}>{t('irVisitForm.saveStatus.failed')}</span>}
+          {saveStatus === 'error'          && <span style={{ fontSize: '11px', color: '#EF4444', maxWidth: '340px', lineHeight: 1.35 }}>{saveError || t('irVisitForm.saveStatus.failed')}</span>}
           <button onClick={handleSave} disabled={isSaving} style={{
             padding: '8px 16px', borderRadius: '8px', fontSize: '12px', fontWeight: '600',
             cursor: 'pointer', fontFamily: 'inherit',

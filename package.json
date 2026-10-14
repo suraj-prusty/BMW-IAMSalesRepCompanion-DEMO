@@ -11,11 +11,14 @@
     "dev:server": "node server.js",
     "build": "vite build",
     "preview": "vite preview",
-    "start": "node server.js"
+    "start": "node server.js",
+    "test:client": "node --test src/services/visitCaptureClient.test.js src/services/recommendationClient.test.js"
   },
   "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.1146.0",
     "@aws-sdk/client-dynamodb": "^3.1121.0",
     "@aws-sdk/client-s3": "^3.1137.0",
+    "@aws-sdk/client-transcribe": "^3.1146.0",
     "@aws-sdk/lib-dynamodb": "^3.1121.0",
     "@aws-sdk/s3-request-presigner": "^3.1137.0",
     "cors": "^2.8.6",

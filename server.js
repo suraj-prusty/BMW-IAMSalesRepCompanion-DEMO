@@ -19,6 +19,8 @@ import {
   ConverseCommand,
 } from "@aws-sdk/client-bedrock-runtime";
 import ffmpegPath from "ffmpeg-static";
+import { recommendationStore, recommendationBackend } from "./recommendationStore.js";
+import { visitCaptureStore } from "./visitCaptureStore.js";
 
 const app = express();
 const __filename = fileURLToPath(import.meta.url);
@@ -382,12 +384,124 @@ app.post("/api/upload-photo", async (req, res) => {
   }
 });
 
+// ── Recommendations (weekly manager Save → recommendation table) ───────────
+// Backend: DynamoDB when RECOMMENDATION_TABLE is set, else a local JSON file.
+
+// Persist one weekly batch (manager Save). Body: { market, manager_id,
+// planning_period_label, planning_period_start, planning_period_end,
+// selected_kpis_json, rows: [{ sales_rep_id, dealer_id, account_type, rank,
+// dealer_sales, carry_over_count }] }
+app.post("/local-api/recommendations/save", async (req, res) => {
+  try {
+    const batch = req.body || {};
+    if (!batch.market || !batch.planning_period_label) {
+      return res.status(400).json({ error: "market and planning_period_label are required" });
+    }
+    if (!Array.isArray(batch.rows) || batch.rows.length === 0) {
+      return res.status(400).json({ error: "rows must be a non-empty array" });
+    }
+    const result = await recommendationStore.saveBatch(batch);
+    res.json({ ...result, backend: recommendationBackend });
+  } catch (err) {
+    console.error("[/api/recommendations/save] Error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// List a rep's recommendations for a period:
+//   GET /api/recommendations?sales_rep_id=anna.schmidt&planning_period_label=2026-W39
+app.get("/local-api/recommendations", async (req, res) => {
+  try {
+    const { sales_rep_id, planning_period_label } = req.query;
+    if (!sales_rep_id) return res.status(400).json({ error: "sales_rep_id is required" });
+    const rows = await recommendationStore.listByRep(sales_rep_id, planning_period_label);
+    res.json({ rows, backend: recommendationBackend });
+  } catch (err) {
+    console.error("[/api/recommendations] Error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// All rows for one Save batch (manager review).
+app.get("/local-api/recommendations/batch/:saveBatchId", async (req, res) => {
+  try {
+    const rows = await recommendationStore.getBatch(req.params.saveBatchId);
+    res.json({ rows, backend: recommendationBackend });
+  } catch (err) {
+    console.error("[/api/recommendations/batch] Error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update one row's rep action (optional manual override).
+app.patch("/local-api/recommendations/:recommendationId", async (req, res) => {
+  try {
+    const { rep_action, action_by } = req.body || {};
+    const allowed = ["RECOMMENDED", "ACCEPTED", "POSTPONED", "EXPIRED"];
+    if (!allowed.includes(rep_action)) {
+      return res.status(400).json({ error: `rep_action must be one of ${allowed.join(", ")}` });
+    }
+    const updated = await recommendationStore.updateAction(req.params.recommendationId, { rep_action, action_by });
+    if (!updated) return res.status(404).json({ error: "recommendation not found" });
+    res.json({ recommendation: updated, backend: recommendationBackend });
+  } catch (err) {
+    console.error("[/api/recommendations/:id] Error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Local visit_capture table (JSON mirror for disconnected development) ───
+app.get("/local-api/visit-capture", async (req, res) => {
+  try {
+    const { sales_rep_id, start_date, end_date } = req.query;
+    const rows = await visitCaptureStore.list({ sales_rep_id, start_date, end_date });
+    res.json({ rows, backend: "local-json" });
+  } catch (err) {
+    console.error("[/local-api/visit-capture] Error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/local-api/visit-capture/:dealerId/draft", async (req, res) => {
+  try {
+    const draft = await visitCaptureStore.getDraft(req.params.dealerId, req.query.form_type);
+    res.json({ draft });
+  } catch (err) {
+    console.error("[/local-api/visit-capture/draft] Error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/local-api/visit-capture/:dealerId/search", async (req, res) => {
+  try {
+    const visit = await visitCaptureStore.getByDate(
+      req.params.dealerId, req.query.form_type, req.query.visit_date
+    );
+    res.json({ visit });
+  } catch (err) {
+    console.error("[/local-api/visit-capture/search] Error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put("/local-api/visit-capture/:dealerId/:visitId", async (req, res) => {
+  try {
+    const visit = await visitCaptureStore.save(
+      req.params.dealerId, req.params.visitId, req.body || {}
+    );
+    res.json({ visit, backend: "local-json" });
+  } catch (err) {
+    console.error("[/local-api/visit-capture/save] Error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Serve static files from dist (production) ──────────────────────────────
 app.use(express.static(path.join(__dirname, "dist")));
 
 // React Router support — all non-API routes serve index.html
 app.get("*", (req, res) => {
-  if (req.path.startsWith("/api/")) {
+  if (req.path.startsWith("/api/") || req.path.startsWith("/local-api/")) {
     return res.status(404).json({ error: "API route not found" });
   }
   res.sendFile(path.join(__dirname, "dist", "index.html"));

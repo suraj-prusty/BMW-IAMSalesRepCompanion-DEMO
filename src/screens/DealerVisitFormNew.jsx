@@ -162,6 +162,7 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
   const [visitId,    setVisitId]    = useState(null);
   const [isSaving,   setIsSaving]   = useState(false);
   const [saveStatus, setSaveStatus] = useState(''); // '' | 'saved' | 'submitted' | 'error'
+  const [saveError,  setSaveError]  = useState('');
   const [draftLoaded, setDraftLoaded] = useState(false);
 
   useEffect(() => {
@@ -174,9 +175,7 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
         // Try to load existing draft for this dealer
         return api.getDraftVisitCapture(code, 'dealer')
           .then((res) => {
-            console.log('[DealerVisitFormNew] getDraftVisitCapture response:', res);
             const visit = res?.draft || res?.visit;
-            console.log('[DealerVisitFormNew] visit:', visit, '| status:', visit?.status);
             if (visit && visit.status === 'draft') {
               // Restore draft — use saved visit_id so Save overwrites the same record
               setVisitId(visit.visit_id);
@@ -205,7 +204,12 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
               setVisitId(crypto.randomUUID());
             }
           })
-          .catch((err) => { console.error('[DealerVisitFormNew] getDraftVisitCapture error:', err); setVisitId(crypto.randomUUID()); });
+          .catch((err) => {
+            console.error('[DealerVisitFormNew] getDraftVisitCapture error:', err.message);
+            setSaveError(err?.message || '');
+            setSaveStatus('error');
+            setVisitId(crypto.randomUUID());
+          });
       })
       .catch((err) => {
         console.error('[DealerVisitFormNew] getDealerByCode:', err);
@@ -384,7 +388,8 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
     try {
       await api.saveVisitCapture(dealerCode, visitId, buildPayload('draft'));
       setSaveStatus('saved');
-    } catch {
+    } catch (err) {
+      setSaveError(err?.message || '');
       setSaveStatus('error');
     } finally {
       setIsSaving(false);
@@ -399,7 +404,8 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
     try {
       await api.saveVisitCapture(dealerCode, visitId, buildPayload('submitted'));
       setSaveStatus('submitted');
-    } catch {
+    } catch (err) {
+      setSaveError(err?.message || '');
       setSaveStatus('error');
     } finally {
       setIsSaving(false);
@@ -491,7 +497,7 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
           {saveStatus === 'draft_restored' && <span style={{ fontSize: '12px', color: '#F59E0B', display: 'flex', alignItems: 'center', gap: '4px' }}><Cloud size={13} /> {t('dealerVisitForm.saveStatus.draftRestored')}</span>}
           {saveStatus === 'saved'          && <span style={{ fontSize: '12px', color: '#22C55E', display: 'flex', alignItems: 'center', gap: '4px' }}><Cloud size={13} /> {t('dealerVisitForm.saveStatus.saved')}</span>}
           {saveStatus === 'submitted'      && <span style={{ fontSize: '12px', color: '#22C55E', display: 'flex', alignItems: 'center', gap: '4px' }}><CheckCircle size={13} /> {t('dealerVisitForm.saveStatus.submitted')}</span>}
-          {saveStatus === 'error'          && <span style={{ fontSize: '12px', color: '#EF4444' }}>{t('dealerVisitForm.saveStatus.failed')}</span>}
+          {saveStatus === 'error'          && <span style={{ fontSize: '12px', color: '#EF4444', maxWidth: '340px', lineHeight: 1.35 }}>{saveError || t('dealerVisitForm.saveStatus.failed')}</span>}
           {!saveStatus && !isMobile  && <span style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '4px' }}><Cloud size={13} /> {t('dealerVisitForm.saveStatus.autoSaved')}</span>}
 
           <button

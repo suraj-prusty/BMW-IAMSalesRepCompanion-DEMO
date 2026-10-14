@@ -7,6 +7,10 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     server: {
       proxy: {
+        '/local-api': {
+          target: env.VITE_LOCAL_API_URL || 'http://localhost:8080',
+          changeOrigin: true,
+        },
         '/api': {
           target: env.VITE_API_URL || 'http://localhost:8080',
           changeOrigin: true,

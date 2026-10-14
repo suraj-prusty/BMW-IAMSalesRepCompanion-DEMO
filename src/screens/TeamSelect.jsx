@@ -6,6 +6,42 @@ import { api } from '../services/api';
 import { TEAM_REPS } from '../data/teamReps';
 import { getTodayLong } from '../utils/dateUtils';
 import TeamDocuments from '../components/TeamDocuments';
+import { rankTopDealers } from '../services/recommendationScoring';
+import { DEMO_RECOMMENDATION_REPS, DEMO_MARKET, DEMO_MANAGER_ID } from '../config/demoRepDealers';
+
+// KPI config keys in a stable order for selected_kpis_json.
+const RECO_KPI_KEYS = ['purchaseRevVsTarget', 'custMoM', 'revYoY', 'abc'];
+
+function buildSelectedKpisJson(selectedSet) {
+  const out = {};
+  RECO_KPI_KEYS.forEach((k) => {
+    const selected = selectedSet.has(k);
+    out[k] = { selected, status: selected ? 'critical' : 'low' };
+  });
+  return out;
+}
+
+function mondayOf(date) {
+  const d = new Date(date);
+  const day = d.getDay() || 7;
+  d.setDate(d.getDate() - day + 1);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+// Local calendar date; toISOString() would shift the day back in time zones ahead of UTC.
+const isoDate = (d) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+function isoWeekLabel(date) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const day = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - day);
+  const year = d.getUTCFullYear();
+  const firstDay = new Date(Date.UTC(year, 0, 1));
+  const week = Math.ceil((((d - firstDay) / 86400000) + 1) / 7);
+  return `${year}-W${String(week).padStart(2, '0')}`;
+}
 
 const PAGE_SIZE = 6; // even multiple of the 2-column desktop grid
 
@@ -235,8 +271,11 @@ export default function TeamSelect() {
   const [repSearch,    setRepSearch]    = useState('');
   const [currentPage,  setCurrentPage]  = useState(1);
   const [selectedKpis, setSelectedKpis] = useState(new Set());
+  const [saveState,    setSaveState]    = useState('idle'); // idle | saving | saved | error
+  const [saveError,    setSaveError]    = useState('');
 
   const handleKpiToggle = (key) => {
+    setSaveState('idle');
     setSelectedKpis((prev) => {
       if (key === null) return new Set();
       const next = new Set(prev);
@@ -244,6 +283,101 @@ export default function TeamSelect() {
       else if (next.size < 2) next.add(key);
       return next;
     });
+  };
+
+  // Manager Save: reconcile last week's visits, carry unvisited dealers first,
+  // then fill remaining top-three slots from the current local CSV ranking.
+  const handleSaveRecommendations = async () => {
+    if (selectedKpis.size === 0 || selectedKpis.size > 2) return;
+    setSaveState('saving');
+    setSaveError('');
+    try {
+      const dealers = api.getLocalDemoDealers();
+
+      const now        = new Date();
+      const start      = mondayOf(now);
+      const end        = new Date(start); end.setDate(end.getDate() + 6);
+      const period     = isoWeekLabel(start);
+      const prevStart  = new Date(start); prevStart.setDate(prevStart.getDate() - 7);
+      const prevEnd    = new Date(start); prevEnd.setDate(prevEnd.getDate() - 1);
+      const prevPeriod = isoWeekLabel(prevStart);
+      const selectedKpisJson = buildSelectedKpisJson(selectedKpis);
+
+      const rows = [];
+      for (const { salesRepId, dealerCodes } of DEMO_RECOMMENDATION_REPS) {
+        const repDealers = dealers.filter((d) => dealerCodes.has(String(d.account_id)));
+        const previous = await api.getRecommendations(salesRepId, prevPeriod);
+        const visits = await api.getVisitCaptures({
+          salesRepId,
+          startDate: isoDate(prevStart),
+          endDate: isoDate(prevEnd),
+        });
+        const carried = [];
+
+        for (const old of previous.sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99))) {
+          const visited = visits.some((v) =>
+            String(v.dealer_id) === String(old.dealer_id) && v.status === 'submitted'
+          );
+          if (visited) {
+            if (old.rep_action !== 'ACCEPTED') {
+              await api.updateRecommendationAction(old.recommendation_id, 'ACCEPTED', null);
+            }
+            continue;
+          }
+
+          const carryCount = Number(old.carry_over_count || 0);
+          if (old.rep_action === 'EXPIRED') continue;
+          if (carryCount >= 3) {
+            await api.updateRecommendationAction(old.recommendation_id, 'EXPIRED', null);
+            continue;
+          }
+          if (old.rep_action !== 'POSTPONED') {
+            await api.updateRecommendationAction(old.recommendation_id, 'POSTPONED', null);
+          }
+          carried.push({
+            dealer_id: String(old.dealer_id),
+            dealer_sales: old.dealer_sales ?? 0,
+            carry_over_count: carryCount + 1,
+          });
+        }
+
+        const carriedIds = new Set(carried.map((d) => d.dealer_id));
+        const fresh = rankTopDealers(repDealers, selectedKpis, repDealers.length)
+          .filter((d) => !carriedIds.has(String(d.account_id)))
+          .slice(0, Math.max(0, 3 - carried.length));
+        const recommendations = [...carried, ...fresh.map((d) => ({
+          dealer_id: String(d.account_id),
+          dealer_sales: d.dealer_sales,
+          carry_over_count: 0,
+        }))].slice(0, 3);
+
+        recommendations.forEach((d, index) => rows.push({
+          sales_rep_id: salesRepId,
+          dealer_id: d.dealer_id,
+          account_type: 'DEALER',
+          rank: index + 1,
+          dealer_sales: d.dealer_sales,
+          carry_over_count: d.carry_over_count,
+        }));
+      }
+
+      if (rows.length === 0) { setSaveState('error'); return; }
+
+      await api.saveRecommendationBatch({
+        market:                DEMO_MARKET,
+        manager_id:            DEMO_MANAGER_ID,
+        planning_period_label: period,
+        planning_period_start: isoDate(start),
+        planning_period_end:   isoDate(end),
+        selected_kpis_json:    selectedKpisJson,
+        rows,
+      });
+      setSaveState('saved');
+    } catch (err) {
+      console.error('[TeamSelect] save recommendations failed:', err.message);
+      setSaveError(err.message);
+      setSaveState('error');
+    }
   };
 
   const filteredReps = useMemo(() => {
@@ -297,6 +431,26 @@ export default function TeamSelect() {
 
       {/* KPI Filter Pills */}
       <KpiPillBar selected={selectedKpis} onToggle={handleKpiToggle} />
+
+      {/* Save the week's KPI selection as the recommendation batch */}
+      {selectedKpis.size > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', margin: '-14px 0 28px', flexWrap: 'wrap' }}>
+          <button
+            onClick={handleSaveRecommendations}
+            disabled={saveState === 'saving'}
+            className="btn-primary"
+            style={{ fontSize: '13px', padding: '9px 18px' }}
+          >
+            {saveState === 'saving' ? 'Saving…' : 'Save Recommendations'}
+          </button>
+          {saveState === 'saved' && (
+            <span style={{ fontSize: '12px', color: '#22C55E' }}>Saved for this week</span>
+          )}
+          {saveState === 'error' && (
+            <span style={{ fontSize: '12px', color: '#EF4444' }}>Could not save — {saveError || 'check the local API'}</span>
+          )}
+        </div>
+      )}
 
       {/* Sales Representative Performance section */}
       <div style={{ marginBottom: '48px' }}>

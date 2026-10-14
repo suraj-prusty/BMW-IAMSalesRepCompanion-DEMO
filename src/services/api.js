@@ -11,15 +11,101 @@
 //   const dealers = await api.getDealers();
 // ────────────────────────────────────────────────────────────────────────────
 
+import { dataService } from '../data/dataService';
+import { LOGIN_REP_ID_TO_SALES_REP_ID } from '../config/demoRepDealers';
+import { createVisitCaptureClient } from './visitCaptureClient';
+import { createRecommendationClient } from './recommendationClient';
+
 // Data endpoints → AWS FastAPI backend
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
 // AI endpoints → local Express server (holds Azure OpenAI key server-side)
 // Dev: set VITE_AI_URL=http://localhost:8080 in .env (run `node server.js` separately)
 // Prod: leave unset — empty string = same origin = Express serves everything
 const AI_BASE  = import.meta.env.VITE_AI_URL  ?? "";
+const LOCAL_API_BASE = import.meta.env.VITE_LOCAL_API_URL || "/local-api";
 
 // Typed chat endpoint (Parts & Dealer Transactions) — AWS API Gateway
 const TYPED_CHAT_URL = "https://ey60bpvzuc.execute-api.eu-central-1.amazonaws.com/chat";
+
+function localDealerRecord(dealer) {
+  const accountId = String(dealer.account_id ?? dealer.dealer_code ?? dealer.id);
+  const revenueVsTarget = dealer.revenueVsTarget ?? dealer.target_achievement_pct ?? null;
+  const yoyGrowth = dealer.yoyGrowth ?? dealer.yoy_growth_pct ?? null;
+  const customerMoM = dealer.customerMoM ?? dealer.mom_sales_growth_pct ?? null;
+  const revenueActual = dealer.revenueActual ?? dealer.revenue_actual ?? null;
+  const abcSegment = dealer.abcSegment ?? dealer.abc_segment ?? null;
+  return {
+    ...dealer,
+    __localDemo: true,
+    id: accountId,
+    account_id: accountId,
+    dealer_code: accountId,
+    dealer_name: dealer.name ?? dealer.dealer_name ?? accountId,
+    customerMoM,
+    yoyGrowth,
+    revenueVsTarget,
+    abcSegment,
+    revenueActual,
+    ytdSalesEur: revenueActual,
+    purchaseAchvPct: revenueVsTarget == null ? null : 100 + revenueVsTarget,
+    saleAchvPct: null,
+    targetType: 'purchase',
+    account_type: dealer.account_type || 'Dealer',
+    location: dealer.location || dealer.region || '—',
+  };
+}
+
+function localDealerDetail(dealer) {
+  const achievement = dealer.revenueVsTarget == null ? null : 100 + dealer.revenueVsTarget;
+  return {
+    dealer_code: String(dealer.account_id),
+    dealer_name: dealer.name,
+    run_date: new Date().toISOString(),
+    kpis: {
+      abc_segmentation: {
+        segment: dealer.abcSegment || null,
+        country: dealer.location || null,
+        ytd_sales_eur: dealer.revenueActual ?? null,
+      },
+      purchase_revenue_vs_target: {
+        M2_AchvPct: achievement,
+        M2_Target: dealer.revenueTarget ?? null,
+        M2_Actual: dealer.revenueActual ?? null,
+      },
+      revenue_yoy: { sales_growth_decline_pct: dealer.yoyGrowth ?? null },
+      customer_trend: {},
+      comp_customer_count: {},
+      mom_decline: {},
+    },
+  };
+}
+
+function currentSalesRepId() {
+  try {
+    const user = JSON.parse(sessionStorage.getItem("user") || "null");
+    return LOGIN_REP_ID_TO_SALES_REP_ID[user?.repId] || user?.email || "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
+// VITE_DEBUG_MODE: unset or "true" keeps recommendations and visit capture in local JSON files;
+// "false" sends both to the AWS APIs.
+const DEBUG_MODE = String(import.meta.env.VITE_DEBUG_MODE ?? "true").trim().toLowerCase() !== "false";
+const BACKEND_MODE = DEBUG_MODE ? "local" : "aws";
+
+const visitCaptureClient = createVisitCaptureClient({
+  mode: BACKEND_MODE,
+  awsUrl: import.meta.env.VITE_VISIT_CAPTURE_API_URL,
+  localBase: LOCAL_API_BASE,
+  getSalesRepId: currentSalesRepId,
+});
+
+const recommendationClient = createRecommendationClient({
+  mode: BACKEND_MODE,
+  awsUrl: import.meta.env.VITE_RECOMMENDATION_API_URL,
+  localBase: LOCAL_API_BASE,
+});
 
 // ── Internal: generic fetch wrapper ────────────────────────────────────────
 async function request(endpoint, options = {}) {
@@ -213,16 +299,51 @@ export const api = {
 
   // ── Results: ABC Segmentation ─────────────────────────────────────────────
   async getAbcSegmentation() {
-    return request("/results/abc-segmentation");
+    try {
+      return await request("/results/abc-segmentation");
+    } catch {
+      const groups = { A: [], B: [], C: [] };
+      dataService.getPrioritizedDealers().forEach((dealer) => {
+        if (groups[dealer.abc_segment]) groups[dealer.abc_segment].push(dealer);
+      });
+      return {
+        abc_segmentation: {
+          segment_A: groups.A,
+          segment_B: groups.B,
+          segment_C: groups.C,
+          all_dealers: Object.values(groups).flat(),
+          total_dealers: Object.values(groups).reduce((sum, group) => sum + group.length, 0),
+        },
+      };
+    }
+  },
+
+  getLocalDemoDealers() {
+    return dataService.getPrioritizedDealers()
+      .filter((dealer) => String(dealer.account_type).toUpperCase() === 'DEALER')
+      .map(localDealerRecord);
   },
 
   // ── Dealers ───────────────────────────────────────────────────────────────
   async getDealers() {
-    return request("/dealers");
+    try {
+      const data = await request("/dealers");
+      const list = Array.isArray(data) ? data : Array.isArray(data?.dealers) ? data.dealers : [];
+      if (list.length > 0) return data;
+    } catch {
+      // Fall through to local CSV-backed data while offline.
+    }
+    return this.getLocalDemoDealers();
   },
 
   async getDealerByCode(code) {
-    return request(`/dealers/${code}`);
+    try {
+      return await request(`/dealers/${code}`);
+    } catch {
+      const dealer = dataService.getPrioritizedDealers().find((d) => String(d.account_id) === String(code));
+      if (!dealer) throw new Error(`Dealer ${code} was not found in local demo data`);
+      return localDealerDetail(localDealerRecord(dealer));
+    }
   },
 
   // Fetch KPI data for every dealer in the provided list concurrently.
@@ -235,7 +356,11 @@ export const api = {
   },
 
   async getInsights(code) {
-    return request(`/dealers/${code}/insights`);
+    try {
+      return await request(`/dealers/${code}/insights`);
+    } catch {
+      return {};
+    }
   },
 
   // ── Visit Forms (existing) ────────────────────────────────────────────────
@@ -256,17 +381,47 @@ export const api = {
 
   // ── Visit Capture (new forms) ─────────────────────────────────────────────
   async getDraftVisitCapture(dealerCode, formType) {
-    return request(`/visit-capture/${dealerCode}/draft?form_type=${formType}`);
+    return visitCaptureClient.getDraft(dealerCode, formType);
   },
 
   async saveVisitCapture(dealerCode, visitId, payload) {
-    return request(`/visit-capture/${dealerCode}/${visitId}`, {
-      method: "PUT",
-      body: JSON.stringify(payload),
-    });
+    let recommendationId = payload?.recommendation_id;
+    if (!recommendationId && !DEBUG_MODE) {
+      // AWS has no server-side linking; a failed lookup must not block saving the visit.
+      recommendationId = await recommendationClient
+        .findForVisit({ salesRepId: currentSalesRepId(), dealerId: dealerCode, visitDate: payload?.visit_date })
+        .catch(() => undefined);
+    }
+    return visitCaptureClient.save(dealerCode, visitId, { ...payload, recommendation_id: recommendationId });
   },
 
   async searchVisitCapture(dealerCode, formType, visitDate) {
-    return request(`/visit-capture/${dealerCode}/search?form_type=${formType}&visit_date=${visitDate}`);
+    return visitCaptureClient.search(dealerCode, formType, visitDate);
+  },
+
+  async getVisitCapture(dealerCode, visitId) {
+    return visitCaptureClient.get(dealerCode, visitId);
+  },
+
+  async getVisitCaptures({ salesRepId, startDate, endDate } = {}) {
+    const data = await visitCaptureClient.list({ salesRepId, startDate, endDate });
+    return data.rows;
+  },
+
+  // ── Recommendations (weekly manager Save): local JSON table or AWS API ─────
+  async saveRecommendationBatch(batch) {
+    return recommendationClient.save(batch);
+  },
+
+  async getRecommendations(salesRepId, period) {
+    return recommendationClient.list(salesRepId, period);
+  },
+
+  async getRecommendationBatch(saveBatchId) {
+    return recommendationClient.getBatch(saveBatchId);
+  },
+
+  async updateRecommendationAction(recommendationId, repAction, actionBy) {
+    return recommendationClient.updateAction(recommendationId, repAction, actionBy);
   },
 };
