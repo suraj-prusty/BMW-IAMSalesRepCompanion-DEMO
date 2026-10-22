@@ -181,6 +181,7 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
               if (fd.topics_discussed?.length)       setTopics(fd.topics_discussed);
               if (fd.other_topic)                    setOtherTopicText(fd.other_topic);
               if (fd.visit_notes)                    setVisitNotes(fd.visit_notes);
+              if (fd.transcript?.segments?.length)   setTranscriptSegments(fd.transcript.segments);
               if (fd.voice_note_key)                 setVoiceNoteKey(fd.voice_note_key);
               if (fd.contact_met)                    setContactMet(fd.contact_met);
               if (fd.visit_type)                     setVisitType(fd.visit_type);
@@ -262,6 +263,9 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
   const [visitOutcome,      setVisitOutcome]      = useState('');
   const [newIRsIdentified,  setNewIRsIdentified]  = useState('No');
   const [voiceNoteKey,      setVoiceNoteKey]      = useState(''); // S3 key of stored audio
+  // Raw transcript — append-only, preserved verbatim (T066). Never mutated by
+  // manual edits or AI summarize, which only touch the editable `visitNotes`.
+  const [transcriptSegments, setTranscriptSegments] = useState([]); // [{ text, recorded_at }]
 
   // ── Voice recorder ────────────────────────────────────────────────────────
   const { isRecording, isTranscribing, error: voiceError, start: startRecording, stop: stopRecording } =
@@ -270,6 +274,8 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
       folder:        'ir',
       onTranscript:  (text) => {
         setVisitNotes((prev) => prev ? prev + ' ' + text : text);
+        // Preserve the original transcript separately (append-only, verbatim).
+        setTranscriptSegments((prev) => [...prev, { text, recorded_at: new Date().toISOString() }]);
         setPreSummaryNotes(null); // new recording invalidates undo
       },
       onAudioStored: (key)  => setVoiceNoteKey(key),
@@ -373,6 +379,11 @@ export default function IRVisitFormNew({ irId: irIdProp }) {
       topics_discussed:   topics,
       other_topic:        otherTopicText,
       visit_notes:        visitNotes,
+      // Original transcript, preserved verbatim and independent of edits (T066).
+      transcript: {
+        full_text: transcriptSegments.map((s) => s.text).join(' '),
+        segments:  transcriptSegments,
+      },
       voice_note_key:     voiceNoteKey || null,
       buying_behaviour:   buyingBehaviour,
       competitor_insight: {

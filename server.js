@@ -186,6 +186,246 @@ app.post("/api/ai/generate", async (req, res) => {
   }
 });
 
+// ── Voice-to-Form Extractor (T067) ─────────────────────────────────────────
+//
+// Turns a free-text visit transcript into a structured, schema-valid draft that
+// maps onto the dealer / IR form_data. The LLM only extracts what is explicitly
+// stated in the transcript; anything not mentioned is left empty. A server-side
+// validation pass then drops any value the model invented that is not in the
+// allowed option set, so the UI never receives an out-of-schema field.
+
+// Allowed option sets — kept in sync with the form constants in
+// DealerVisitFormNew.jsx / IRVisitFormNew.jsx. These are authoritative: the
+// extractor result is filtered against them before it is returned.
+const EXTRACT_SCHEMA = {
+  dealer: {
+    topics:        ["Stock", "Delivery", "PL24", "AOS", "Marketing", "Competition", "Pricing", "Reporting", "Other"],
+    challenges:    ["Stock Availability", "Delivery Issues", "PL24 Adoption", "AOS Compliance", "Competitor Pressure", "Pricing Concerns", "Training Needed", "Other"],
+    opportunities: ["Increase PL24 Adoption", "Expand Parts Range", "AOS Upsell", "Fleet Conversion", "Workshop Upgrade", "Marketing Support", "Other"],
+    owners:        ["Dealer", "Rep", "Both"],
+    priorities:    ["High", "Medium", "Low"],
+    statuses:      ["Good", "Monitor", "Needs Support"],
+  },
+  ir: {
+    topics:           ["Pricing", "Stock Availability", "PL24", "Delivery", "Rewards Program", "Technical Support", "Competition", "Marketing", "Warranty", "Other"],
+    buyingBehaviours: ["Regular & Growing", "Captive Parts Only", "Buying Competitive Parts Elsewhere", "Inconsistent / Seasonal"],
+    competitors:      ["LKQ", "Bosch", "Autodoc", "Inter-Team", "Other"],
+    categoriesLost:   ["Brake Parts", "Filters", "Engine Oil", "Tyres", "Electrical", "Other"],
+    responsible:      ["Rep", "Dealer", "Both"],
+    priorities:       ["High", "Medium", "Low"],
+    actionStatuses:   ["Open", "In Progress", "Closed"],
+    visitOutcomes:    ["Order Generated", "Opportunity Identified", "No Progress"],
+  },
+};
+
+// Build the extraction instruction + the exact JSON shape expected back.
+function buildExtractionPrompt(formType) {
+  const s = EXTRACT_SCHEMA[formType];
+  const list = (arr) => arr.map((v) => `"${v}"`).join(", ");
+
+  if (formType === "ir") {
+    return `You extract structured data from an Independent Repairer (IR) sales-visit transcript.
+
+RULES:
+- Only extract information that is EXPLICITLY stated in the transcript. Never guess or infer.
+- If something is not mentioned, use "" for strings, [] for arrays, and false for booleans. Do NOT invent values.
+- For fields with an allowed list, choose ONLY from that list. If nothing fits, use "Other" (where available) or "".
+- "visit_notes" must be a faithful 2-4 sentence factual summary of what was discussed — no opinions, no fabricated numbers.
+- Return ONLY valid JSON. No markdown, no commentary.
+
+ALLOWED VALUES:
+- topics_discussed (array, pick any that apply): ${list(s.topics)}
+- buying_behaviour (single): ${list(s.buyingBehaviours)}
+- competitor_insight.competitor (single): ${list(s.competitors)}
+- competitor_insight.category_lost (single): ${list(s.categoriesLost)}
+- competitor_insight.mode (single): "Observed" or "Not Observed"
+- actions_agreed[].responsible (single): ${list(s.responsible)}
+- actions_agreed[].priority (single): ${list(s.priorities)}
+- actions_agreed[].status (single): ${list(s.actionStatuses)}
+- visit_outcome (single): ${list(s.visitOutcomes)}
+- new_irs_identified (single): "No" or "Yes — added to CRM"
+
+RETURN THIS EXACT JSON SHAPE:
+{
+  "topics_discussed": [],
+  "other_topic": "",
+  "visit_notes": "",
+  "contact_met": "",
+  "buying_behaviour": "",
+  "competitor_insight": { "mode": "Not Observed", "competitor": "", "category_lost": "", "reason": "" },
+  "direct_sale": { "sale_achieved": false, "products": [ { "product": "", "qty": "", "unitPrice": "" } ] },
+  "actions_agreed": [ { "action": "", "responsible": "", "dueDate": "", "priority": "", "status": "Open" } ],
+  "visit_outcome": "",
+  "new_irs_identified": "No"
+}
+Notes: omit the products/actions arrays entirely (use []) if none were mentioned. "dueDate" must be ISO yyyy-mm-dd or "". "qty"/"unitPrice" are numeric strings or "".`;
+  }
+
+  // dealer
+  return `You extract structured data from a BMW dealer sales-visit transcript.
+
+RULES:
+- Only extract information that is EXPLICITLY stated in the transcript. Never guess or infer.
+- If something is not mentioned, use "" for strings and [] for arrays. Do NOT invent values.
+- For fields with an allowed list, choose ONLY from that list. If nothing fits, use "Other" (where available) or "".
+- "visit_notes" must be a faithful 2-4 sentence factual summary of what was discussed — no opinions, no fabricated numbers.
+- Return ONLY valid JSON. No markdown, no commentary.
+
+ALLOWED VALUES:
+- topics_discussed (array, pick any that apply): ${list(s.topics)}
+- biggest_challenge (single): ${list(s.challenges)}
+- biggest_opportunity (single): ${list(s.opportunities)}
+- competitor_activity.mode (single): "Observed" or "Not Observed"
+- actions_agreed[].owner (single): ${list(s.owners)}
+- actions_agreed[].priority (single): ${list(s.priorities)}
+- overall_status (single): ${list(s.statuses)}
+
+RETURN THIS EXACT JSON SHAPE:
+{
+  "topics_discussed": [],
+  "other_topic": "",
+  "visit_notes": "",
+  "biggest_challenge": "",
+  "biggest_opportunity": "",
+  "competitor_activity": { "mode": "Not Observed", "comment": "" },
+  "actions_agreed": [ { "action": "", "owner": "", "dueDate": "", "priority": "" } ],
+  "overall_status": ""
+}
+Notes: use [] for actions_agreed if none were mentioned. "dueDate" must be ISO yyyy-mm-dd or "".`;
+}
+
+// Robustly parse a JSON object out of an LLM reply (handles ```json fences).
+function parseJsonObject(text) {
+  if (!text) return null;
+  let s = text.trim();
+  // Strip markdown code fences if present
+  if (s.startsWith("```")) {
+    s = s.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+  }
+  // Fall back to the outermost { ... } span
+  const first = s.indexOf("{");
+  const last = s.lastIndexOf("}");
+  if (first === -1 || last === -1 || last < first) return null;
+  try {
+    return JSON.parse(s.slice(first, last + 1));
+  } catch {
+    return null;
+  }
+}
+
+// Keep a value only if it is in the allowed list; otherwise "".
+const keepEnum = (val, allowed) => (allowed.includes(val) ? val : "");
+// Keep only array members that are in the allowed list.
+const keepEnumArray = (arr, allowed) =>
+  Array.isArray(arr) ? arr.filter((v) => allowed.includes(v)) : [];
+
+// Drop any model-invented values that are not in the schema. This is the
+// grounding/safety gate: the rep can only ever be shown valid options.
+function validateExtraction(formType, raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const s = EXTRACT_SCHEMA[formType];
+  const str = (v) => (typeof v === "string" ? v.trim() : "");
+
+  if (formType === "ir") {
+    const ci = raw.competitor_insight || {};
+    const ds = raw.direct_sale || {};
+    return {
+      topics_discussed: keepEnumArray(raw.topics_discussed, s.topics),
+      other_topic: str(raw.other_topic),
+      visit_notes: str(raw.visit_notes),
+      contact_met: str(raw.contact_met),
+      buying_behaviour: keepEnum(str(raw.buying_behaviour), s.buyingBehaviours),
+      competitor_insight: {
+        mode: ["Observed", "Not Observed"].includes(ci.mode) ? ci.mode : "Not Observed",
+        competitor: keepEnum(str(ci.competitor), s.competitors),
+        category_lost: keepEnum(str(ci.category_lost), s.categoriesLost),
+        reason: str(ci.reason),
+      },
+      direct_sale: {
+        sale_achieved: ds.sale_achieved === true,
+        products: Array.isArray(ds.products)
+          ? ds.products
+              .filter((p) => p && str(p.product))
+              .map((p) => ({ product: str(p.product), qty: str(p.qty), unitPrice: str(p.unitPrice) }))
+          : [],
+      },
+      actions_agreed: Array.isArray(raw.actions_agreed)
+        ? raw.actions_agreed
+            .filter((a) => a && str(a.action))
+            .map((a) => ({
+              action: str(a.action),
+              responsible: keepEnum(str(a.responsible), s.responsible),
+              dueDate: str(a.dueDate),
+              priority: keepEnum(str(a.priority), s.priorities),
+              status: keepEnum(str(a.status), s.actionStatuses) || "Open",
+            }))
+        : [],
+      visit_outcome: keepEnum(str(raw.visit_outcome), s.visitOutcomes),
+      new_irs_identified: ["No", "Yes — added to CRM"].includes(raw.new_irs_identified) ? raw.new_irs_identified : "No",
+    };
+  }
+
+  // dealer
+  const ca = raw.competitor_activity || {};
+  return {
+    topics_discussed: keepEnumArray(raw.topics_discussed, s.topics),
+    other_topic: str(raw.other_topic),
+    visit_notes: str(raw.visit_notes),
+    biggest_challenge: keepEnum(str(raw.biggest_challenge), s.challenges),
+    biggest_opportunity: keepEnum(str(raw.biggest_opportunity), s.opportunities),
+    competitor_activity: {
+      mode: ["Observed", "Not Observed"].includes(ca.mode) ? ca.mode : "Not Observed",
+      comment: str(ca.comment),
+    },
+    actions_agreed: Array.isArray(raw.actions_agreed)
+      ? raw.actions_agreed
+          .filter((a) => a && str(a.action))
+          .map((a) => ({
+            action: str(a.action),
+            owner: keepEnum(str(a.owner), s.owners),
+            dueDate: str(a.dueDate),
+            priority: keepEnum(str(a.priority), s.priorities),
+          }))
+      : [],
+    overall_status: keepEnum(str(raw.overall_status), s.statuses),
+  };
+}
+
+// ── AI: Voice-to-Form Extractor (T067) ─────────────────────────────────────
+// Body: { transcript: string, formType: "dealer" | "ir" }
+// Returns: { extracted: <schema-valid form_data subset> }
+app.post("/api/ai/extract-visit", async (req, res) => {
+  try {
+    const { transcript, formType = "dealer" } = req.body || {};
+
+    if (!transcript || !transcript.trim()) {
+      return res.status(400).json({ error: "transcript is required" });
+    }
+    if (!EXTRACT_SCHEMA[formType]) {
+      return res.status(400).json({ error: `formType must be one of ${Object.keys(EXTRACT_SCHEMA).join(", ")}` });
+    }
+
+    const reply = await callBedrock({
+      systemPrompt: buildExtractionPrompt(formType),
+      userPrompt: `TRANSCRIPT:\n${transcript.trim()}`,
+      maxTokens: 900,
+      temperature: 0,
+    });
+
+    const parsed = parseJsonObject(reply);
+    const extracted = validateExtraction(formType, parsed);
+
+    if (!extracted) {
+      return res.status(502).json({ error: "Could not parse a structured result from the transcript." });
+    }
+
+    res.json({ extracted });
+  } catch (err) {
+    console.error("[/api/ai/extract-visit] Error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Helper: concatenate two audio buffers via ffmpeg ──────────────────────
 // Uses filter_complex concat (re-encodes), which handles any input format
 // including WebM-with-headers from separate MediaRecorder sessions.

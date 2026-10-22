@@ -1,0 +1,224 @@
+[
+  {
+    "recommendation_id": "ae727a91-97fb-4d54-a59a-8810b18a84c4",
+    "save_batch_id": "sb-DE-2026W42",
+    "market": "DE",
+    "manager_id": "m.mueller",
+    "sales_rep_id": "marcus.schmidt",
+    "planning_period_label": "2026-W42",
+    "planning_period_start": "2026-10-12",
+    "planning_period_end": "2026-10-18",
+    "selected_kpis_json": {
+      "purchaseRevVsTarget": {
+        "selected": true,
+        "status": "critical"
+      },
+      "custMoM": {
+        "selected": false,
+        "status": "low"
+      },
+      "revYoY": {
+        "selected": false,
+        "status": "low"
+      },
+      "abc": {
+        "selected": true,
+        "status": "critical"
+      }
+    },
+    "generated_at": "2026-10-15T08:50:27.367Z",
+    "dealer_id": "D107",
+    "account_type": "DEALER",
+    "rank": 1,
+    "dealer_sales": 158351,
+    "carry_over_count": 0,
+    "rep_action": "RECOMMENDED",
+    "action_at": null,
+    "action_by": null
+  },
+  {
+    "recommendation_id": "0c5b746b-0efa-44f2-936d-a4d7d1663854",
+    "save_batch_id": "sb-DE-2026W42",
+    "market": "DE",
+    "manager_id": "m.mueller",
+    "sales_rep_id": "marcus.schmidt",
+    "planning_period_label": "2026-W42",
+    "planning_period_start": "2026-10-12",
+    "planning_period_end": "2026-10-18",
+    "selected_kpis_json": {
+      "purchaseRevVsTarget": {
+        "selected": true,
+        "status": "critical"
+      },
+      "custMoM": {
+        "selected": false,
+        "status": "low"
+      },
+      "revYoY": {
+        "selected": false,
+        "status": "low"
+      },
+      "abc": {
+        "selected": true,
+        "status": "critical"
+      }
+    },
+    "generated_at": "2026-10-15T08:50:27.367Z",
+    "dealer_id": "D123",
+    "account_type": "DEALER",
+    "rank": 2,
+    "dealer_sales": 160970,
+    "carry_over_count": 0,
+    "rep_action": "RECOMMENDED",
+    "action_at": null,
+    "action_by": null
+  },
+  {
+    "recommendation_id": "f8ab9415-c637-4bfc-b44d-5c5921555773",
+    "save_batch_id": "sb-DE-2026W42",
+    "market": "DE",
+    "manager_id": "m.mueller",
+    "sales_rep_id": "marcus.schmidt",
+    "planning_period_label": "2026-W42",
+    "planning_period_start": "2026-10-12",
+    "planning_period_end": "2026-10-18",
+    "selected_kpis_json": {
+      "purchaseRevVsTarget": {
+        "selected": true,
+        "status": "critical"
+      },
+      "custMoM": {
+        "selected": false,
+        "status": "low"
+      },
+      "revYoY": {
+        "selected": false,
+        "status": "low"
+      },
+      "abc": {
+        "selected": true,
+        "status": "critical"
+      }
+    },
+    "generated_at": "2026-10-15T08:50:27.367Z",
+    "dealer_id": "D102",
+    "account_type": "DEALER",
+    "rank": 3,
+    "dealer_sales": 315706,
+    "carry_over_count": 0,
+    "rep_action": "RECOMMENDED",
+    "action_at": null,
+    "action_by": null
+  },
+  {
+    "recommendation_id": "52eb8fc3-241c-43ff-a89a-f074a2d4c9e3",
+    "save_batch_id": "sb-DE-2026W42",
+    "market": "DE",
+    "manager_id": "m.mueller",
+    "sales_rep_id": "sofia.keller",
+    "planning_period_label": "2026-W42",
+    "planning_period_start": "2026-10-12",
+    "planning_period_end": "2026-10-18",
+    "selected_kpis_json": {
+      "purchaseRevVsTarget": {
+        "selected": true,
+        "status": "critical"
+      },
+      "custMoM": {
+        "selected": false,
+        "status": "low"
+      },
+      "revYoY": {
+        "selected": false,
+        "status": "low"
+      },
+      "abc": {
+        "selected": true,
+        "status": "critical"
+      }
+    },
+    "generated_at": "2026-10-15T08:50:27.367Z",
+    "dealer_id": "D105",
+    "account_type": "DEALER",
+    "rank": 1,
+    "dealer_sales": 130814,
+    "carry_over_count": 0,
+    "rep_action": "RECOMMENDED",
+    "action_at": null,
+    "action_by": null
+  },
+  {
+    "recommendation_id": "936cb4d6-e5d7-4351-aac0-30d8cadfb0ba",
+    "save_batch_id": "sb-DE-2026W42",
+    "market": "DE",
+    "manager_id": "m.mueller",
+    "sales_rep_id": "sofia.keller",
+    "planning_period_label": "2026-W42",
+    "planning_period_start": "2026-10-12",
+    "planning_period_end": "2026-10-18",
+    "selected_kpis_json": {
+      "purchaseRevVsTarget": {
+        "selected": true,
+        "status": "critical"
+      },
+      "custMoM": {
+        "selected": false,
+        "status": "low"
+      },
+      "revYoY": {
+        "selected": false,
+        "status": "low"
+      },
+      "abc": {
+        "selected": true,
+        "status": "critical"
+      }
+    },
+    "generated_at": "2026-10-15T08:50:27.367Z",
+    "dealer_id": "D110",
+    "account_type": "DEALER",
+    "rank": 2,
+    "dealer_sales": 239400,
+    "carry_over_count": 0,
+    "rep_action": "RECOMMENDED",
+    "action_at": null,
+    "action_by": null
+  },
+  {
+    "recommendation_id": "767f3870-065b-4836-9b78-a6178ec103e8",
+    "save_batch_id": "sb-DE-2026W42",
+    "market": "DE",
+    "manager_id": "m.mueller",
+    "sales_rep_id": "sofia.keller",
+    "planning_period_label": "2026-W42",
+    "planning_period_start": "2026-10-12",
+    "planning_period_end": "2026-10-18",
+    "selected_kpis_json": {
+      "purchaseRevVsTarget": {
+        "selected": true,
+        "status": "critical"
+      },
+      "custMoM": {
+        "selected": false,
+        "status": "low"
+      },
+      "revYoY": {
+        "selected": false,
+        "status": "low"
+      },
+      "abc": {
+        "selected": true,
+        "status": "critical"
+      }
+    },
+    "generated_at": "2026-10-15T08:50:27.367Z",
+    "dealer_id": "D122",
+    "account_type": "DEALER",
+    "rank": 3,
+    "dealer_sales": 207892,
+    "carry_over_count": 0,
+    "rep_action": "RECOMMENDED",
+    "action_at": null,
+    "action_by": null
+  }
+]

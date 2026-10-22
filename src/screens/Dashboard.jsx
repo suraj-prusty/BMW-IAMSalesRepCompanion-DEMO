@@ -11,11 +11,7 @@ import { kpiColor } from '../data/dealers';
 import { dataService } from '../data/dataService';
 import { api } from '../services/api';
 import { isoWeekLabel } from '../services/recommendationClient';
-import {
-  MARCUS_DEALER_CODES,
-  SOFIA_DEALER_CODES,
-  LOGIN_REP_ID_TO_SALES_REP_ID,
-} from '../config/demoRepDealers';
+import { LOGIN_REP_ID_TO_SALES_REP_ID } from '../config/demoRepDealers';
 
 // ── KPI Strip — computed inside Dashboard from real data ───
 
@@ -1542,8 +1538,14 @@ export default function Dashboard() {
   const [dealersLoading, setDealersLoading] = useState(true);
 
   useEffect(() => {
-    setApiDealers(api.getLocalDemoDealers());
-    setDealersLoading(false);
+    api.getDealers()
+      .then((data) => {
+        console.log('[GET /dealers]', data);
+        const list = Array.isArray(data) ? data : Array.isArray(data?.dealers) ? data.dealers : [];
+        setApiDealers(list.map(normalizeApiDealer));
+      })
+      .catch((err) => console.error('[GET /dealers] error:', err))
+      .finally(() => setDealersLoading(false));
   }, []);
 
   const [showAllDealers,  setShowAllDealers]  = useState(false);
@@ -1555,7 +1557,6 @@ export default function Dashboard() {
   const [dealerSearch,    setDealerSearch]    = useState('');
 
   const DEALER_PAGE_SIZE = 50;
-  const ALL_DEMO_DEALER_CODES = new Set([...MARCUS_DEALER_CODES, ...SOFIA_DEALER_CODES]);
 
   const managerSelectedRepId = isManager ? sessionStorage.getItem('managerSelectedRepId') : null;
 
@@ -1580,17 +1581,7 @@ export default function Dashboard() {
       default:                   return false;
     }
   };
-  const repId =
-    managerSelectedRepId === 'marcus-schmidt' ? 'marcus' :
-    managerSelectedRepId === 'sofia-keller'   ? 'sofia'  :
-    currentUser?.repId;
-
-  const activeDealerCodes =
-    repId === 'marcus' ? MARCUS_DEALER_CODES :
-    repId === 'sofia'  ? SOFIA_DEALER_CODES  :
-    ALL_DEMO_DEALER_CODES;
-
-  const demoDealers = apiDealers.filter(d => activeDealerCodes.has(String(d.dealer_code)));
+  const demoDealers = apiDealers;
 
   // Recommended dealers filtered by manager's KPI selection (when active) or default B-segment rule
   const recommendedDealers = useMemo(() => {
