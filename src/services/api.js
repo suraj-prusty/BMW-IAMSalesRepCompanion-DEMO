@@ -12,8 +12,6 @@
 // ────────────────────────────────────────────────────────────────────────────
 
 import { dataService } from '../data/dataService';
-import { LOGIN_REP_ID_TO_SALES_REP_ID } from '../config/demoRepDealers';
-import { createVisitCaptureClient } from './visitCaptureClient';
 import { createRecommendationClient } from './recommendationClient';
 
 // Data endpoints → AWS FastAPI backend
@@ -56,26 +54,10 @@ function localDealerRecord(dealer) {
 }
 
 
-function currentSalesRepId() {
-  try {
-    const user = JSON.parse(sessionStorage.getItem("user") || "null");
-    return LOGIN_REP_ID_TO_SALES_REP_ID[user?.repId] || user?.email || "unknown";
-  } catch {
-    return "unknown";
-  }
-}
-
 // VITE_DEBUG_MODE: unset or "true" keeps recommendations and visit capture in local JSON files;
 // "false" sends both to the AWS APIs.
 const DEBUG_MODE = String(import.meta.env.VITE_DEBUG_MODE ?? "true").trim().toLowerCase() !== "false";
 const BACKEND_MODE = DEBUG_MODE ? "local" : "aws";
-
-const visitCaptureClient = createVisitCaptureClient({
-  mode: BACKEND_MODE,
-  awsUrl: import.meta.env.VITE_VISIT_CAPTURE_API_URL,
-  localBase: LOCAL_API_BASE,
-  getSalesRepId: currentSalesRepId,
-});
 
 const recommendationClient = createRecommendationClient({
   mode: BACKEND_MODE,
@@ -362,32 +344,34 @@ export const api = {
   },
 
   // ── Visit Capture (new forms) ─────────────────────────────────────────────
+  // These call the FastAPI backend (VITE_API_URL) directly via request(), which
+  // routes to the visit-capture Lambdas. No dedicated client / separate URL.
   async getDraftVisitCapture(dealerCode, formType) {
-    return visitCaptureClient.getDraft(dealerCode, formType);
+    return request(`/visit-capture/${dealerCode}/draft?form_type=${formType}`);
   },
 
   async saveVisitCapture(dealerCode, visitId, payload) {
-    let recommendationId = payload?.recommendation_id;
-    if (!recommendationId && !DEBUG_MODE) {
-      // AWS has no server-side linking; a failed lookup must not block saving the visit.
-      recommendationId = await recommendationClient
-        .findForVisit({ salesRepId: currentSalesRepId(), dealerId: dealerCode, visitDate: payload?.visit_date })
-        .catch(() => undefined);
-    }
-    return visitCaptureClient.save(dealerCode, visitId, { ...payload, recommendation_id: recommendationId });
+    return request(`/visit-capture/${dealerCode}/${visitId}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
   },
 
   async searchVisitCapture(dealerCode, formType, visitDate) {
-    return visitCaptureClient.search(dealerCode, formType, visitDate);
+    return request(`/visit-capture/${dealerCode}/search?form_type=${formType}&visit_date=${visitDate}`);
   },
 
   async getVisitCapture(dealerCode, visitId) {
-    return visitCaptureClient.get(dealerCode, visitId);
+    return request(`/visit-capture/${dealerCode}/${visitId}`);
   },
 
   async getVisitCaptures({ salesRepId, startDate, endDate } = {}) {
-    const data = await visitCaptureClient.list({ salesRepId, startDate, endDate });
-    return data.rows;
+    const qs = new URLSearchParams();
+    if (salesRepId) qs.set("sales_rep_id", salesRepId);
+    if (startDate)  qs.set("start_date", startDate);
+    if (endDate)    qs.set("end_date", endDate);
+    const data = await request(`/visit-capture${qs.toString() ? `?${qs}` : ""}`);
+    return data?.rows ?? [];
   },
 
   // ── Recommendations (weekly manager Save): local JSON table or AWS API ─────
