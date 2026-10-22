@@ -196,6 +196,25 @@ export const api = {
     return data.reply;
   },
 
+  // ── AI: Voice-to-Form Extractor (T067) ───────────────────────────────────
+  // Turns a visit transcript into a schema-valid structured draft that maps
+  // onto the dealer / IR form fields. Only extracts what the transcript states;
+  // the server drops any value outside the allowed option sets.
+  // Returns the `extracted` object (form_data subset) ready to populate state.
+  async extractVisit({ transcript, formType = "dealer" }) {
+    const response = await fetch(`${AI_BASE}/api/ai/extract-visit`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ transcript, formType }),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || `Extraction failed with status ${response.status}`);
+    }
+    const data = await response.json();
+    return data.extracted;
+  },
+
   // ── AI: Typed chat (Parts & Dealer Transactions / Promotion & Campaign) ───
   // Sends the full payload directly to the AWS chat endpoint.
   async chatTyped(payload) {

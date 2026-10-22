@@ -184,6 +184,8 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
               if (fd.topics_discussed?.length)  setTopics(fd.topics_discussed);
               if (fd.other_topic)                setOtherTopicText(fd.other_topic);
               if (fd.visit_notes)                setVisitNotes(fd.visit_notes);
+              if (fd.transcript?.segments?.length) setTranscriptSegments(fd.transcript.segments);
+              if (fd.transcript?.full_transcription) transcriptTextRef.current = fd.transcript.full_transcription;
               if (fd.voice_note_key)             setVoiceNoteKey(fd.voice_note_key);
               if (fd.biggest_challenge)          setChallenge(fd.biggest_challenge);
               if (fd.biggest_opportunity)        setOpportunity(fd.biggest_opportunity);
@@ -259,6 +261,11 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
   ]);
   const [overallStatus, setOverallStatus] = useState('');
   const [voiceNoteKey,  setVoiceNoteKey]  = useState(''); // S3 key of stored audio
+  // Raw transcript — append-only, preserved verbatim (T066). Never mutated by
+  // manual edits or AI summarize, which only touch the editable `visitNotes`.
+  const [transcriptSegments, setTranscriptSegments] = useState([]); // [{ original_transcription, recorded_at }]
+  // Full transcript kept in a ref so extraction always reads the latest text.
+  const transcriptTextRef = useRef('');
 
   // ── Voice recorder ────────────────────────────────────────────────────────
   const { isRecording, isTranscribing, error: voiceError, start: startRecording, stop: stopRecording } =
@@ -267,7 +274,12 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
       folder:         'dealer',
       onTranscript:   (text) => {
         setVisitNotes((prev) => (prev ? prev + ' ' + text : text).slice(0, 1000));
+        // Preserve the original transcript separately (append-only, verbatim).
+        setTranscriptSegments((prev) => [...prev, { original_transcription: text, recorded_at: new Date().toISOString() }]);
         setPreSummaryNotes(null); // new recording invalidates undo
+        // Auto-fill extractable fields from the full transcript (T067).
+        transcriptTextRef.current = (transcriptTextRef.current ? transcriptTextRef.current + ' ' : '') + text;
+        autoFillFromTranscript(transcriptTextRef.current);
       },
       onAudioStored:  (key)  => setVoiceNoteKey(key),
     });
@@ -302,6 +314,55 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
     if (preSummaryNotes !== null) {
       setVisitNotes(preSummaryNotes);
       setPreSummaryNotes(null);
+    }
+  };
+
+  // ── AI Voice-to-Form auto-fill (T067) ─────────────────────────────────────
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [extractError, setExtractError] = useState(null);
+
+  // Apply extracted fields WITHOUT overwriting anything the rep already set.
+  // Topics are merged (union); single-value fields fill only when empty.
+  const applyExtraction = (ex) => {
+    if (!ex) return;
+    if (ex.topics_discussed?.length) {
+      setTopics((prev) => Array.from(new Set([...prev, ...ex.topics_discussed])));
+    }
+    if (ex.other_topic)         setOtherTopicText((prev) => prev || ex.other_topic);
+    if (ex.biggest_challenge)   setChallenge((prev) => prev || ex.biggest_challenge);
+    if (ex.biggest_opportunity) setOpportunity((prev) => prev || ex.biggest_opportunity);
+    if (ex.overall_status)      setOverallStatus((prev) => prev || ex.overall_status);
+    if (ex.competitor_activity?.mode === 'Observed') {
+      setCompetitorMode((prev) => (prev === 'Not Observed' ? 'Observed' : prev));
+      if (ex.competitor_activity.comment) {
+        setCompetitorComment((prev) => prev || ex.competitor_activity.comment);
+        setShowCommentInput(true);
+      }
+    }
+    if (ex.actions_agreed?.length) {
+      setActions((prev) => {
+        const hasRealRows = prev.some((a) => a.action && a.action.trim());
+        const mapped = ex.actions_agreed.map((a) => ({
+          action: a.action || '', owner: a.owner || '', dueDate: a.dueDate || '', priority: a.priority || '',
+        }));
+        return hasRealRows ? [...prev, ...mapped] : mapped;
+      });
+    }
+  };
+
+  // Runs automatically after each transcription completes.
+  const autoFillFromTranscript = async (fullText) => {
+    if (!fullText?.trim()) return;
+    setExtractError(null);
+    setIsExtracting(true);
+    try {
+      const extracted = await api.extractVisit({ transcript: fullText, formType: 'dealer' });
+      applyExtraction(extracted);
+    } catch (err) {
+      setExtractError('Could not auto-fill fields from the recording.');
+      console.error('[DealerVisitFormNew] extractVisit error:', err.message);
+    } finally {
+      setIsExtracting(false);
     }
   };
 
@@ -378,6 +439,11 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
       topics_discussed:   topics,
       other_topic:        otherTopicText,
       visit_notes:        visitNotes,
+      // Original transcript, preserved verbatim and independent of edits (T066).
+      transcript: {
+        full_transcription: transcriptSegments.map((s) => s.original_transcription).join(' '),
+        segments:  transcriptSegments,
+      },
       voice_note_key:     voiceNoteKey || null,
       biggest_challenge:  challenge,
       biggest_opportunity: opportunity,
@@ -742,6 +808,14 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
             )}
             {summarizeError && (
               <p style={{ margin: '5px 0 0', fontSize: '11px', color: '#EF4444' }}>{summarizeError}</p>
+            )}
+            {isExtracting && (
+              <p style={{ margin: '5px 0 0', fontSize: '11px', color: '#A100FF', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <Sparkles size={12} /> Auto-filling fields from the recording…
+              </p>
+            )}
+            {extractError && (
+              <p style={{ margin: '5px 0 0', fontSize: '11px', color: '#EF4444' }}>{extractError}</p>
             )}
           </SectionCard>
 
