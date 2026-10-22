@@ -179,11 +179,13 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
             if (visit && visit.status === 'draft') {
               // Restore draft — use saved visit_id so Save overwrites the same record
               setVisitId(visit.visit_id);
+              if (visit.recommendation_id) setRecommendationId(visit.recommendation_id);
               const fd = visit.form_data || {};
               if (fd.topics_discussed?.length)  setTopics(fd.topics_discussed);
               if (fd.other_topic)                setOtherTopicText(fd.other_topic);
               if (fd.visit_notes)                setVisitNotes(fd.visit_notes);
               if (fd.transcript?.segments?.length) setTranscriptSegments(fd.transcript.segments);
+              if (fd.transcript?.full_transcription) transcriptTextRef.current = fd.transcript.full_transcription;
               if (fd.voice_note_key)             setVoiceNoteKey(fd.voice_note_key);
               if (fd.biggest_challenge)          setChallenge(fd.biggest_challenge);
               if (fd.biggest_opportunity)        setOpportunity(fd.biggest_opportunity);
@@ -264,9 +266,13 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
   ]);
   const [overallStatus, setOverallStatus] = useState('');
   const [voiceNoteKey,  setVoiceNoteKey]  = useState(''); // S3 key of stored audio
+  const [recommendationId, setRecommendationId] = useState(''); // link to the recommendation this visit fulfils
   // Raw transcript — append-only, preserved verbatim (T066). Never mutated by
   // manual edits or AI summarize, which only touch the editable `visitNotes`.
-  const [transcriptSegments, setTranscriptSegments] = useState([]); // [{ text, recorded_at }]
+  const [transcriptSegments, setTranscriptSegments] = useState([]); // [{ original_transcription, recorded_at }]
+  // Full transcript kept in a ref so extraction always reads the latest text,
+  // independent of async state updates.
+  const transcriptTextRef = useRef('');
 
   // ── Voice recorder ────────────────────────────────────────────────────────
   const { isRecording, isTranscribing, error: voiceError, start: startRecording, stop: stopRecording } =
@@ -276,8 +282,11 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
       onTranscript:   (text) => {
         setVisitNotes((prev) => (prev ? prev + ' ' + text : text).slice(0, 1000));
         // Preserve the original transcript separately (append-only, verbatim).
-        setTranscriptSegments((prev) => [...prev, { text, recorded_at: new Date().toISOString() }]);
+        setTranscriptSegments((prev) => [...prev, { original_transcription: text, recorded_at: new Date().toISOString() }]);
         setPreSummaryNotes(null); // new recording invalidates undo
+        // Auto-fill extractable fields from the full transcript (T067).
+        transcriptTextRef.current = (transcriptTextRef.current ? transcriptTextRef.current + ' ' : '') + text;
+        autoFillFromTranscript(transcriptTextRef.current);
       },
       onAudioStored:  (key)  => setVoiceNoteKey(key),
     });
@@ -312,6 +321,55 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
     if (preSummaryNotes !== null) {
       setVisitNotes(preSummaryNotes);
       setPreSummaryNotes(null);
+    }
+  };
+
+  // ── AI Voice-to-Form auto-fill (T067) ─────────────────────────────────────
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [extractError, setExtractError] = useState(null);
+
+  // Apply extracted fields WITHOUT overwriting anything the rep already set.
+  // Topics are merged (union); single-value fields fill only when empty.
+  const applyExtraction = (ex) => {
+    if (!ex) return;
+    if (ex.topics_discussed?.length) {
+      setTopics((prev) => Array.from(new Set([...prev, ...ex.topics_discussed])));
+    }
+    if (ex.other_topic)         setOtherTopicText((prev) => prev || ex.other_topic);
+    if (ex.biggest_challenge)   setChallenge((prev) => prev || ex.biggest_challenge);
+    if (ex.biggest_opportunity) setOpportunity((prev) => prev || ex.biggest_opportunity);
+    if (ex.overall_status)      setOverallStatus((prev) => prev || ex.overall_status);
+    if (ex.competitor_activity?.mode === 'Observed') {
+      setCompetitorMode((prev) => (prev === 'Not Observed' ? 'Observed' : prev));
+      if (ex.competitor_activity.comment) {
+        setCompetitorComment((prev) => prev || ex.competitor_activity.comment);
+        setShowCommentInput(true);
+      }
+    }
+    if (ex.actions_agreed?.length) {
+      setActions((prev) => {
+        const hasRealRows = prev.some((a) => a.action && a.action.trim());
+        const mapped = ex.actions_agreed.map((a) => ({
+          action: a.action || '', owner: a.owner || '', dueDate: a.dueDate || '', priority: a.priority || '',
+        }));
+        return hasRealRows ? [...prev, ...mapped] : mapped;
+      });
+    }
+  };
+
+  // Runs automatically after each transcription completes.
+  const autoFillFromTranscript = async (fullText) => {
+    if (!fullText?.trim()) return;
+    setExtractError(null);
+    setIsExtracting(true);
+    try {
+      const extracted = await api.extractVisit({ transcript: fullText, formType: 'dealer' });
+      applyExtraction(extracted);
+    } catch (err) {
+      setExtractError('Could not auto-fill fields from the recording.');
+      console.error('[DealerVisitFormNew] extractVisit error:', err.message);
+    } finally {
+      setIsExtracting(false);
     }
   };
 
@@ -382,6 +440,9 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
     visit_date:   visitDateISO,
     submitted_by: api.getUser()?.email || '',
     updated_at:   new Date().toISOString(),
+    // Preserve the recommendation link across saves (omitted when unknown so
+    // saveVisitCapture can look it up).
+    recommendation_id: recommendationId || undefined,
     form_data: {
       dealer_name:        dealerName,
       dealer_code:        dealerCode,
@@ -390,7 +451,7 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
       visit_notes:        visitNotes,
       // Original transcript, preserved verbatim and independent of edits (T066).
       transcript: {
-        full_text: transcriptSegments.map((s) => s.text).join(' '),
+        full_transcription: transcriptSegments.map((s) => s.original_transcription).join(' '),
         segments:  transcriptSegments,
       },
       voice_note_key:     voiceNoteKey || null,
@@ -415,7 +476,10 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
     setIsSaving(true);
     setSaveStatus('');
     try {
-      await api.saveVisitCapture(dealerCode, visitId, buildPayload('draft'));
+      const res = await api.saveVisitCapture(dealerCode, visitId, buildPayload('draft'));
+      // Remember any recommendation link the backend resolved/stored, so later
+      // saves in this session keep sending it.
+      if (res?.visit?.recommendation_id) setRecommendationId(res.visit.recommendation_id);
       setSaveStatus('saved');
     } catch (err) {
       setSaveError(err?.message || '');
@@ -431,7 +495,8 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
     setIsSaving(true);
     setSaveStatus('');
     try {
-      await api.saveVisitCapture(dealerCode, visitId, buildPayload('submitted'));
+      const res = await api.saveVisitCapture(dealerCode, visitId, buildPayload('submitted'));
+      if (res?.visit?.recommendation_id) setRecommendationId(res.visit.recommendation_id);
       setSaveStatus('submitted');
     } catch (err) {
       setSaveError(err?.message || '');
@@ -759,6 +824,14 @@ export default function DealerVisitFormNew({ dealerId: dealerIdProp, dealer, dat
             )}
             {summarizeError && (
               <p style={{ margin: '5px 0 0', fontSize: '11px', color: '#EF4444' }}>{summarizeError}</p>
+            )}
+            {isExtracting && (
+              <p style={{ margin: '5px 0 0', fontSize: '11px', color: '#A100FF', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <Sparkles size={12} /> Auto-filling fields from the recording…
+              </p>
+            )}
+            {extractError && (
+              <p style={{ margin: '5px 0 0', fontSize: '11px', color: '#EF4444' }}>{extractError}</p>
             )}
           </SectionCard>
 

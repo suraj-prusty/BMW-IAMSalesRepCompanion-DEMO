@@ -12,6 +12,7 @@
 // ────────────────────────────────────────────────────────────────────────────
 
 import { dataService } from '../data/dataService';
+import { LOGIN_REP_ID_TO_SALES_REP_ID } from '../config/demoRepDealers';
 import { createRecommendationClient } from './recommendationClient';
 
 // Data endpoints → AWS FastAPI backend
@@ -54,9 +55,21 @@ function localDealerRecord(dealer) {
 }
 
 
+// Resolve the current rep's sales_rep_id (maps the login repId to the id used
+// in the recommendation table; falls back to email). Used to link a visit to
+// its recommendation.
+function currentSalesRepId() {
+  try {
+    const user = JSON.parse(sessionStorage.getItem("user") || "null");
+    return LOGIN_REP_ID_TO_SALES_REP_ID[user?.repId] || user?.email || "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
 // VITE_DEBUG_MODE: unset or "true" keeps recommendations and visit capture in local JSON files;
 // "false" sends both to the AWS APIs.
-const DEBUG_MODE = String(import.meta.env.VITE_DEBUG_MODE ?? "true").trim().toLowerCase() !== "false";
+const DEBUG_MODE = String(import.meta.env.VITE_DEBUG_MODE ?? "false").trim().toLowerCase() !== "false";
 const BACKEND_MODE = DEBUG_MODE ? "local" : "aws";
 
 const recommendationClient = createRecommendationClient({
@@ -347,22 +360,42 @@ export const api = {
   // These call the FastAPI backend (VITE_API_URL) directly via request(), which
   // routes to the visit-capture Lambdas. No dedicated client / separate URL.
   async getDraftVisitCapture(dealerCode, formType) {
-    return request(`/visit-capture/${dealerCode}/draft?form_type=${formType}`);
+    return request(`/visit-capture/${dealerCode}/draft?form_type=${formType}&sales_rep_id=${encodeURIComponent(currentSalesRepId())}`);
   },
 
   async saveVisitCapture(dealerCode, visitId, payload) {
+    // Link the visit to its recommendation (as Suraj intended), then save via
+    // the backend. If no id is supplied, look it up by rep + dealer + week; a
+    // failed lookup must never block the save.
+    const salesRepId = currentSalesRepId();
+    let recommendationId = payload?.recommendation_id;
+    if (!recommendationId) {
+      recommendationId = await recommendationClient
+        .findForVisit({ salesRepId, dealerId: dealerCode, visitDate: payload?.visit_date })
+        .catch(() => undefined);
+    }
+    // Always send sales_rep_id (the Lambda requires it and scopes/records by it).
+    const body = { ...payload, sales_rep_id: salesRepId };
+    if (recommendationId) body.recommendation_id = recommendationId;
     return request(`/visit-capture/${dealerCode}/${visitId}`, {
       method: "PUT",
-      body: JSON.stringify(payload),
+      body: JSON.stringify(body),
     });
   },
 
   async searchVisitCapture(dealerCode, formType, visitDate) {
-    return request(`/visit-capture/${dealerCode}/search?form_type=${formType}&visit_date=${visitDate}`);
+    return request(`/visit-capture/${dealerCode}/search?form_type=${formType}&visit_date=${visitDate}&sales_rep_id=${encodeURIComponent(currentSalesRepId())}`);
   },
 
+  // The backend exposes only save/draft/search — no get-by-id or rep-scoped
+  // list route. These two fail soft so screens that call them (e.g. TeamSelect)
+  // don't break; they return empty until/unless those routes are added.
   async getVisitCapture(dealerCode, visitId) {
-    return request(`/visit-capture/${dealerCode}/${visitId}`);
+    try {
+      return await request(`/visit-capture/${dealerCode}/${visitId}`);
+    } catch {
+      return null;
+    }
   },
 
   async getVisitCaptures({ salesRepId, startDate, endDate } = {}) {
@@ -370,8 +403,12 @@ export const api = {
     if (salesRepId) qs.set("sales_rep_id", salesRepId);
     if (startDate)  qs.set("start_date", startDate);
     if (endDate)    qs.set("end_date", endDate);
-    const data = await request(`/visit-capture${qs.toString() ? `?${qs}` : ""}`);
-    return data?.rows ?? [];
+    try {
+      const data = await request(`/visit-capture${qs.toString() ? `?${qs}` : ""}`);
+      return data?.rows ?? [];
+    } catch {
+      return [];
+    }
   },
 
   // ── Recommendations (weekly manager Save): local JSON table or AWS API ─────

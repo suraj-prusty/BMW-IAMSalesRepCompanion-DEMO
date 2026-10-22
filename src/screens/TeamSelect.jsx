@@ -292,7 +292,22 @@ export default function TeamSelect() {
     setSaveState('saving');
     setSaveError('');
     try {
-      const dealers = api.getLocalDemoDealers();
+      // Real dealers from the backend, so each recommendation's dealer_id matches
+      // the real dealer_code the visit form captures.
+      const resp = await api.getDealers();
+      const dealers = (Array.isArray(resp) ? resp : resp?.dealers ?? [])
+        .map((d) => ({ ...d, account_id: String(d.account_id ?? d.dealer_code ?? d.id) }));
+
+      // No real rep→dealer assignment exists yet, so partition the real dealers
+      // across the demo reps (round-robin, sorted for stability) — each rep gets a
+      // distinct, non-overlapping pool so their recommendations differ.
+      const sortedDealers = [...dealers].sort((a, b) =>
+        String(a.account_id).localeCompare(String(b.account_id), undefined, { numeric: true }));
+      const dealersByRep = new Map(DEMO_RECOMMENDATION_REPS.map((r) => [r.salesRepId, []]));
+      sortedDealers.forEach((d, i) => {
+        const rep = DEMO_RECOMMENDATION_REPS[i % DEMO_RECOMMENDATION_REPS.length];
+        dealersByRep.get(rep.salesRepId).push(d);
+      });
 
       const now        = new Date();
       const start      = mondayOf(now);
@@ -304,8 +319,8 @@ export default function TeamSelect() {
       const selectedKpisJson = buildSelectedKpisJson(selectedKpis);
 
       const rows = [];
-      for (const { salesRepId, dealerCodes } of DEMO_RECOMMENDATION_REPS) {
-        const repDealers = dealers.filter((d) => dealerCodes.has(String(d.account_id)));
+      for (const { salesRepId } of DEMO_RECOMMENDATION_REPS) {
+        const repDealers = dealersByRep.get(salesRepId) ?? [];
         const previous = await api.getRecommendations(salesRepId, prevPeriod);
         const visits = await api.getVisitCaptures({
           salesRepId,
